@@ -17,9 +17,14 @@ const progressText = $('#progressText');
 const outputPlaceholder = $('#outputPlaceholder');
 const warningBanner = $('#warningBanner');
 const warningMessage = $('#warningMessage');
+const comparison = $('#comparison');
+const beforeImg = $('#beforeImg');
+const compareHandle = $('#compareHandle');
+const installBtn = $('#installBtn');
 
 let currentJobId = null;
 let pollTimer = null;
+let inputObjectURL = null;
 
 // Configuration from centralized config via backend API
 // No hardcoded defaults - will be loaded from backend
@@ -139,8 +144,9 @@ function resetUI() {
   if (progressPercent) progressPercent.textContent = '0%';
   progress.classList.add('hidden');
   statusEl.textContent = '';
-  preview.classList.add('hidden');
-  preview.src = '';
+  comparison.classList.add('hidden');
+  preview.removeAttribute('src');
+  beforeImg.removeAttribute('src');
   downloadLink.classList.add('hidden');
   downloadLink.href = '#';
   if (outputPlaceholder) outputPlaceholder.classList.remove('hidden');
@@ -150,7 +156,75 @@ function resetAll() {
   // Reset file input
   fileInput.value = '';
   if (filePreview) filePreview.classList.add('hidden');
+  if (inputObjectURL) { URL.revokeObjectURL(inputObjectURL); inputObjectURL = null; }
   resetUI();
+}
+
+// ── Before/after comparison slider ──────────────────────────────────────────
+let comparisonReady = false;
+
+function setComparePos(clientX) {
+  const rect = comparison.getBoundingClientRect();
+  let pct = ((clientX - rect.left) / rect.width) * 100;
+  pct = Math.max(0, Math.min(100, pct));
+  comparison.style.setProperty('--pos', pct + '%');
+}
+
+function initComparison() {
+  comparison.style.setProperty('--pos', '50%');
+  if (comparisonReady) return; // attach listeners once
+  comparisonReady = true;
+
+  let dragging = false;
+  comparison.addEventListener('pointerdown', (e) => {
+    if (comparison.classList.contains('no-before')) return;
+    dragging = true;
+    try { comparison.setPointerCapture(e.pointerId); } catch (_) {}
+    setComparePos(e.clientX);
+  });
+  comparison.addEventListener('pointermove', (e) => {
+    if (dragging) setComparePos(e.clientX);
+  });
+  const stop = () => { dragging = false; };
+  comparison.addEventListener('pointerup', stop);
+  comparison.addEventListener('pointercancel', stop);
+
+  compareHandle.addEventListener('keydown', (e) => {
+    const cur = parseFloat(getComputedStyle(comparison).getPropertyValue('--pos')) || 50;
+    if (e.key === 'ArrowLeft') { comparison.style.setProperty('--pos', Math.max(0, cur - 4) + '%'); e.preventDefault(); }
+    if (e.key === 'ArrowRight') { comparison.style.setProperty('--pos', Math.min(100, cur + 4) + '%'); e.preventDefault(); }
+  });
+}
+
+// ── PWA: service worker + install prompt ────────────────────────────────────
+function registerServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch((e) => console.warn('SW registration failed:', e));
+    });
+  }
+}
+
+let deferredPrompt = null;
+function setupInstallPrompt() {
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    if (installBtn) installBtn.classList.remove('hidden');
+  });
+  if (installBtn) {
+    installBtn.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      installBtn.classList.add('hidden');
+    });
+  }
+  window.addEventListener('appinstalled', () => {
+    if (installBtn) installBtn.classList.add('hidden');
+    deferredPrompt = null;
+  });
 }
 
 function showFilePreview(file) {
@@ -197,6 +271,10 @@ function handleFileSelect(file) {
       okBtn.disabled = true;
       return;
     }
+
+    // Keep an object URL of the original for the before/after comparison
+    if (inputObjectURL) URL.revokeObjectURL(inputObjectURL);
+    inputObjectURL = URL.createObjectURL(file);
 
     showFilePreview(file);
     okBtn.disabled = false;
@@ -341,10 +419,17 @@ function startPolling() {
         // Hide output placeholder
         if (outputPlaceholder) outputPlaceholder.classList.add('hidden');
 
-        // Show preview only if enabled in config
+        // Show the before/after comparison
         if (appConfig.ui.preview_enabled) {
           preview.src = resultUrl;
-          preview.classList.remove('hidden');
+          if (inputObjectURL) {
+            beforeImg.src = inputObjectURL;
+            comparison.classList.remove('no-before');
+          } else {
+            comparison.classList.add('no-before');
+          }
+          comparison.classList.remove('hidden');
+          initComparison();
         }
 
         // Show download link only if enabled in config
@@ -406,5 +491,7 @@ async function init() {
 }
 
 // Run initialization
+registerServiceWorker();
+setupInstallPrompt();
 init();
 

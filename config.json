@@ -70,14 +70,14 @@
       "retry_attempts": 3
     },
     "ui": {
-      "title": "Image Reconstruction",
+      "title": "PixUp",
       "enable_model_selection": false,
       "labels": {
         "input": "Input Image",
         "output": "Output",
-        "ok_button": "Submit",
+        "ok_button": "Enhance",
         "cancel_button": "Cancel",
-        "download_button": "Download Result"
+        "download_button": "Download result"
       },
       "messages": {
         "uploading": "Uploading...",
