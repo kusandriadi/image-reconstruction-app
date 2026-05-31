@@ -130,7 +130,7 @@ function applyUIConfig() {
     if (appConfig.ui?.enable_model_selection === false) {
       modelSelectorElement.style.display = 'none';
     } else {
-      modelSelectorElement.style.display = 'flex';
+      modelSelectorElement.style.display = 'block';
     }
   }
 }
@@ -169,6 +169,24 @@ function resetAll() {
   if (filePreview) filePreview.classList.add('hidden');
   if (inputObjectURL) { URL.revokeObjectURL(inputObjectURL); inputObjectURL = null; }
   resetUI();
+}
+
+// Lightweight transient toast notification
+let toastTimer = null;
+function showToast(message) {
+  let toast = document.getElementById('toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'toast';
+    toast.className = 'toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  // Force reflow so the transition runs even on rapid re-trigger
+  void toast.offsetWidth;
+  toast.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 3200);
 }
 
 // ── Before/after comparison slider ──────────────────────────────────────────
@@ -384,13 +402,24 @@ okBtn.addEventListener('click', async () => {
 
 cancelBtn.addEventListener('click', async () => {
   if (!currentJobId || !appConfig) return;
+  const jobId = currentJobId;
   cancelBtn.disabled = true;
   statusEl.textContent = appConfig.ui.messages.cancelling;
+
+  // Ask the backend to stop the running reconstruction (it aborts between tiles
+  // and frees the processing slot).
   try {
-    await fetch(`${BACKEND}/api/reconstructions/${currentJobId}`, { method: 'DELETE' });
+    await fetch(`${BACKEND}/api/reconstructions/${jobId}`, { method: 'DELETE' });
   } catch (e) {
-    // ignore
+    // best effort — reset the UI regardless
   }
+
+  // Return to the initial state, exactly like clicking Reset
+  resetAll();
+
+  // Confirm to the user
+  const msg = (appConfig.ui.messages && appConfig.ui.messages.cancel_success) || 'Reconstruction stopped';
+  showToast(`${msg} (${jobId.slice(0, 8)})`);
 });
 
 resetBtn.addEventListener('click', () => {

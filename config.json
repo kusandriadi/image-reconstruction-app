@@ -86,6 +86,7 @@
       "messages": {
         "uploading": "Uploading...",
         "cancelling": "Cancelling...",
+        "cancel_success": "Reconstruction stopped successfully",
         "file_too_large": "File too large (max {max_size}MB)",
         "file_type_not_allowed": "File type not allowed. Use: {allowed_types}",
         "polling_error": "Polling error: {error}",
