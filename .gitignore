@@ -208,6 +208,8 @@ cython_debug/
 backend/data/uploads/
 backend/data/outputs/
 backend/data/jobs/
+# Collected combined logs (logs/app-YYYY-MM-DD.log) + collector pidfile
+logs/
 backend/data/models/*.pth
 backend/model/*.pth
 # Never commit model weights anywhere (they live in GitHub Releases: models-v1)

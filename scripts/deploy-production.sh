@@ -320,6 +320,34 @@ print_success "SSL auto-renewal configured"
 echo ""
 
 ################################################################################
+# Set up the combined log collector as a systemd service
+################################################################################
+print_info "Setting up combined log collector (systemd)..."
+SERVICE_USER=$(whoami)
+sudo tee /etc/systemd/system/image-reconstruction-logs.service > /dev/null << EOF
+[Unit]
+Description=Image Reconstruction combined log collector
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=$SERVICE_USER
+WorkingDirectory=$CURRENT_DIR
+ExecStart=/bin/bash $CURRENT_DIR/scripts/save-logs.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now image-reconstruction-logs.service > /dev/null 2>&1 || true
+print_success "Log collector running — combined logs in logs/app-YYYY-MM-DD.log"
+echo ""
+
+################################################################################
 # Wait for services to be fully ready
 ################################################################################
 print_info "Waiting for frontend & backend to become ready (this can take a minute)..."
@@ -381,6 +409,7 @@ echo "Manage the application:"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  • Status / info:    scripts/info.sh"
 echo "  • Live logs:        scripts/logs.sh        (or: scripts/logs.sh backend|frontend)"
+echo "  • Saved logs:       logs/app-$(date +%F).log  (combined, tagged, per-day)"
 echo "  • Restart / update: scripts/restart.sh"
 echo "  • Stop:             scripts/stop.sh"
 echo "  • Test SSL renewal: sudo certbot renew --dry-run"

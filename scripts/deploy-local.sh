@@ -89,6 +89,17 @@ $COMPOSE -f "$COMPOSE_FILE" up -d --build
 print_success "Containers started"
 echo ""
 
+# Start the combined log collector in the background (logs/app-YYYY-MM-DD.log)
+mkdir -p logs
+if [ -f logs/.collector.pid ] && kill -0 "$(cat logs/.collector.pid 2>/dev/null)" 2>/dev/null; then
+    print_info "Log collector already running (pid $(cat logs/.collector.pid))"
+else
+    nohup bash "$SCRIPT_DIR/save-logs.sh" -f "$COMPOSE_FILE" > /dev/null 2>&1 &
+    echo $! > logs/.collector.pid
+    print_success "Log collector started — combined logs in logs/app-YYYY-MM-DD.log"
+fi
+echo ""
+
 ################################################################################
 # Wait until frontend & backend are fully ready
 ################################################################################
@@ -151,6 +162,7 @@ echo "Manage the application:"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  • Status / info:   scripts/info.sh"
 echo "  • Live logs:       scripts/logs.sh        (or: scripts/logs.sh backend|frontend)"
+echo "  • Saved logs:      logs/app-$(date +%F).log  (combined, tagged, per-day)"
 echo "  • Restart:         scripts/deploy-local.sh   (just re-run this script)"
 echo "  • Stop:            scripts/stop.sh"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

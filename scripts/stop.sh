@@ -88,6 +88,18 @@ $COMPOSE down
 print_success "All services stopped successfully"
 echo ""
 
+# Stop the combined log collector (systemd service and/or background nohup)
+if systemctl list-unit-files 2>/dev/null | grep -q "image-reconstruction-logs.service"; then
+    sudo systemctl stop image-reconstruction-logs.service 2>/dev/null || true
+    print_info "Log collector (systemd) stopped"
+fi
+if [ -f logs/.collector.pid ]; then
+    kill "$(cat logs/.collector.pid 2>/dev/null)" 2>/dev/null || true
+    rm -f logs/.collector.pid
+    print_info "Log collector (background) stopped"
+fi
+echo ""
+
 ################################################################################
 # Verify
 ################################################################################
