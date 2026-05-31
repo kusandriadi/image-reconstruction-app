@@ -129,7 +129,12 @@ LOCAL=$(git rev-parse HEAD)
 REMOTE=$(git rev-parse origin/$CURRENT_BRANCH)
 
 if [ "$LOCAL" = "$REMOTE" ]; then
-    print_success "Already up to date! No changes to pull."
+    print_success "Already up to date — no new commits."
+    echo ""
+    # Still restart so config.json / mounted-volume changes are picked up.
+    print_info "Restarting services to apply any config changes..."
+    $COMPOSE restart
+    print_success "Services restarted"
     echo ""
     print_info "Current services status:"
     $COMPOSE ps
