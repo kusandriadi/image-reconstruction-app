@@ -43,8 +43,11 @@ Sets up a venv, installs deps, starts backend (FastAPI) and frontend (static ser
 # provisions a Let's Encrypt cert, starts frontend + backend)
 scripts/deploy-production.sh example.com admin@example.com
 
-# Local: HTTP-only stack on http://localhost (no domain/SSL needed)
+# Local (Linux/macOS): HTTP-only stack on http://localhost (no domain/SSL needed)
 scripts/deploy-local.sh
+
+# Local (Windows, PowerShell + Docker Desktop — no WSL needed):
+#   powershell -ExecutionPolicy Bypass -File scripts\deploy-local.ps1
 
 # Update after code changes (git pull + rebuild + restart)
 scripts/restart.sh
@@ -118,7 +121,9 @@ image-reconstruction/
 │   └── script.js
 └── scripts/
     ├── deploy-production.sh # One-shot production deploy (Docker + SSL)
-    ├── deploy-local.sh      # Local HTTP-only deploy
+    ├── deploy-local.sh      # Local HTTP-only deploy (Linux/macOS)
+    ├── deploy-local.ps1     # Local HTTP-only deploy (Windows PowerShell)
+    ├── save-logs.ps1        # Windows log collector (used by deploy-local.ps1)
     ├── restart.sh           # Git pull + rebuild + restart
     ├── stop.sh              # Graceful shutdown
     ├── info.sh              # Status dashboard
