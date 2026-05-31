@@ -80,7 +80,12 @@ class BackendApp:
 
         # Core services - dependency injection
         logger.info("Initializing core services")
-        self.reconstructor = Reconstructor(model_path=str(self.config.model_path), device=self.config.model_device)
+        self.reconstructor = Reconstructor(
+            model_path=str(self.config.model_path),
+            device=self.config.model_device,
+            tile_size=self.config.tile_size,
+            tile_pad=self.config.tile_pad,
+        )
         self.jobs = JobManager(
             reconstructor=self.reconstructor,
             uploads_dir=str(self.config.uploads_dir),

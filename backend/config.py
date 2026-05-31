@@ -65,12 +65,14 @@ class Config:
     app_description: str = "Image reconstruction service using PyTorch models"
     docs_enabled: bool = False
     model_device: str = "auto"
+    tile_size: int = 256
+    tile_pad: int = 16
     allowed_origins: List[str] = field(default_factory=lambda: ["*"])
     cors_allow_credentials: bool = True
     cors_allow_methods: List[str] = field(default_factory=lambda: ["*"])
     cors_allow_headers: List[str] = field(default_factory=lambda: ["*"])
     max_upload_mb: float = 10.0
-    max_pixels: int = 40_000_000
+    max_pixels: int = 6_000_000
     allowed_mime: Set[str] = field(default_factory=lambda: {"image/png", "image/jpeg", "image/jpg", "image/webp"})
     allowed_ext: Set[str] = field(default_factory=lambda: {".png", ".jpg", ".jpeg", ".webp"})
     max_concurrent_jobs: int = 2
@@ -176,6 +178,8 @@ class Config:
         model_path_str = loader.get("backend.model.path", "backend/data/models/model.pth")
         model_path = project_root / model_path_str
         model_device = loader.get("backend.model.device", "auto")
+        tile_size = int(loader.get("backend.model.tile_size", 256))
+        tile_pad = int(loader.get("backend.model.tile_pad", 16))
 
         # Read CORS configuration
         allowed_origins = loader.get("backend.cors.allowed_origins", ["*"])
@@ -227,6 +231,8 @@ class Config:
             app_description=app_description,
             docs_enabled=docs_enabled,
             model_device=model_device,
+            tile_size=tile_size,
+            tile_pad=tile_pad,
             allowed_origins=allowed_origins,
             cors_allow_credentials=cors_allow_credentials,
             cors_allow_methods=cors_allow_methods,

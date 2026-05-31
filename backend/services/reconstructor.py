@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import logging
+import math
 import os
 import threading
 from pathlib import Path
@@ -55,18 +56,23 @@ class Reconstructor:
         ... )
     """
 
-    def __init__(self, model_path: str, device: str = "auto"):
+    def __init__(self, model_path: str, device: str = "auto", tile_size: int = 256, tile_pad: int = 16):
         """Initialize the reconstructor with model path and device selection.
 
         Args:
             model_path: Path to the PyTorch model file (.pt or .pth format).
             device: Device to use for inference ("auto", "cpu", or "cuda").
                     Environment variable DEVICE overrides this value.
+            tile_size: Edge length (input pixels) of each inference tile. Tiling
+                    keeps peak memory bounded and lets progress advance per tile.
+            tile_pad: Overlap padding (input pixels) around each tile to avoid seams.
         """
         logger.info(f"Initializing Reconstructor with model path: {model_path}")
         self.model_path = str(model_path)
         self.model_loaded = False
         self.model: Optional[object] = None
+        self.tile_size = int(tile_size)
+        self.tile_pad = int(tile_pad)
         self._lock = threading.Lock()
 
         # Device selection: environment variable DEVICE > config device > auto-detect
@@ -233,6 +239,102 @@ class Reconstructor:
         self.model_loaded = True
         logger.info(f"Model initialization complete. Mode: {'PyTorch' if self.model else 'Pass-through'}")
 
+    def _tiled_inference(
+        self,
+        model,
+        tensor,
+        tile_size: int,
+        tile_pad: int,
+        progress: Optional[Callable[[int, str], None]] = None,
+        cancelled: Optional[Callable[[], bool]] = None,
+    ):
+        """Run the model over the image in overlapping tiles.
+
+        Processing in tiles keeps peak memory bounded (critical on CPU) and lets
+        us report real progress as each tile finishes. Tiles overlap by tile_pad
+        input pixels to avoid visible seams; the overlap is trimmed when stitching.
+        Inference progress is mapped onto the 70-88% range.
+
+        Args:
+            model: The loaded PyTorch model.
+            tensor: Input tensor shaped (1, C, H, W) on the inference device.
+            tile_size: Tile edge length in input pixels.
+            tile_pad: Overlap padding (input pixels) around each tile.
+            progress: Optional callback(percent, message).
+            cancelled: Optional callback() -> bool to abort between tiles.
+
+        Returns:
+            Output tensor shaped (1, C, H*scale, W*scale) on CPU.
+
+        Raises:
+            Cancelled: If the cancelled callback returns True between tiles.
+        """
+        b, c, h, w = tensor.shape
+        tiles_x = math.ceil(w / tile_size)
+        tiles_y = math.ceil(h / tile_size)
+        total = max(1, tiles_x * tiles_y)
+        logger.info(f"Tiling {w}x{h} into {tiles_x}x{tiles_y} = {total} tile(s)")
+
+        output = None
+        scale = None
+        idx = 0
+
+        for ty in range(tiles_y):
+            for tx in range(tiles_x):
+                idx += 1
+                # Tile bounds without padding
+                in_start_x = tx * tile_size
+                in_end_x = min(in_start_x + tile_size, w)
+                in_start_y = ty * tile_size
+                in_end_y = min(in_start_y + tile_size, h)
+                # Tile bounds with padding/overlap
+                pad_start_x = max(in_start_x - tile_pad, 0)
+                pad_end_x = min(in_end_x + tile_pad, w)
+                pad_start_y = max(in_start_y - tile_pad, 0)
+                pad_end_y = min(in_end_y + tile_pad, h)
+
+                in_tile = tensor[:, :, pad_start_y:pad_end_y, pad_start_x:pad_end_x]
+                with torch.no_grad():
+                    out_tile = model(in_tile)
+                if isinstance(out_tile, (list, tuple)):
+                    out_tile = out_tile[0]
+                out_tile = out_tile.detach()
+
+                # Determine the upscale factor from the first tile, then allocate
+                # the full output on CPU.
+                if scale is None:
+                    scale = max(1, out_tile.shape[-2] // in_tile.shape[-2])
+                    output = torch.zeros(
+                        (b, out_tile.shape[1], h * scale, w * scale),
+                        dtype=out_tile.dtype,
+                    )
+                    logger.info(f"Upscale factor {scale}x -> output {w * scale}x{h * scale}")
+
+                # Destination region in the upscaled output (unpadded area)
+                out_start_x = in_start_x * scale
+                out_end_x = in_end_x * scale
+                out_start_y = in_start_y * scale
+                out_end_y = in_end_y * scale
+                # Matching region inside the (padded) output tile
+                src_start_x = (in_start_x - pad_start_x) * scale
+                src_end_x = src_start_x + (in_end_x - in_start_x) * scale
+                src_start_y = (in_start_y - pad_start_y) * scale
+                src_end_y = src_start_y + (in_end_y - in_start_y) * scale
+
+                output[:, :, out_start_y:out_end_y, out_start_x:out_end_x] = \
+                    out_tile[:, :, src_start_y:src_end_y, src_start_x:src_end_x].cpu()
+
+                if progress:
+                    pct = 70 + int(18 * idx / total)
+                    progress(pct, f"running model (tile {idx}/{total})")
+                if cancelled and cancelled():
+                    logger.info("Tiled inference cancelled")
+                    raise Cancelled()
+
+                del out_tile, in_tile
+
+        return output
+
     def reconstruct(
         self,
         input_path: str,
@@ -338,18 +440,17 @@ class Reconstructor:
                 # If device transfer fails, keep on CPU
                 pass
 
-        # Run model inference
+        # Run model inference in tiles: progress advances per tile and peak
+        # memory stays bounded (important on CPU).
         step(70, "running model")
         if TORCH_AVAILABLE and model is not None and tensor is not None:
-            logger.info("Running model inference")
-            with torch.no_grad():
-                out = model(tensor)
-            logger.debug("Model inference complete")
-            # Normalize output into PIL Image
-            if isinstance(out, (list, tuple)):
-                out = out[0]
-            if hasattr(out, "detach"):
-                out = out.detach().cpu().squeeze(0)
+            logger.info(f"Running tiled inference (tile={self.tile_size}, pad={self.tile_pad})")
+            out = self._tiled_inference(
+                model, tensor,
+                tile_size=self.tile_size, tile_pad=self.tile_pad,
+                progress=progress, cancelled=cancelled,
+            )
+            out = out.squeeze(0)
             # Clamp values to [0, 1] range to prevent artifacts
             out = torch.clamp(out, 0, 1)
             logger.debug(f"Output tensor range: [{out.min():.4f}, {out.max():.4f}]")
