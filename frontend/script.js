@@ -352,9 +352,12 @@ okBtn.addEventListener('click', async () => {
   const form = new FormData();
   form.append('file', fileInput.files[0]);
 
-  // Add selected model to form data
-  if (modelSelect) {
+  // Send the selected model; if the picker is hidden/empty, default to the
+  // first configured model.
+  if (modelSelect && modelSelect.value) {
     form.append('model', modelSelect.value);
+  } else if (appConfig.ui?.models?.length) {
+    form.append('model', appConfig.ui.models[0].value);
   }
 
   try {
