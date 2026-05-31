@@ -113,6 +113,17 @@ function applyUIConfig() {
     preview.alt = appConfig.ui.preview_alt_text;
   }
 
+  // Build model options from config (single source of truth)
+  if (modelSelect && Array.isArray(appConfig.ui?.models)) {
+    modelSelect.innerHTML = '';
+    appConfig.ui.models.forEach((m) => {
+      const opt = document.createElement('option');
+      opt.value = m.value;
+      opt.textContent = m.label;
+      modelSelect.appendChild(opt);
+    });
+  }
+
   // Show/hide model selector based on config
   const modelSelectorElement = document.querySelector('.model-selector');
   if (modelSelectorElement) {

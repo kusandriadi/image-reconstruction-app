@@ -72,6 +72,10 @@
     "ui": {
       "title": "PixUp",
       "enable_model_selection": true,
+      "models": [
+        { "value": "ConvNext_REAL-ESRGAN.pth", "label": "ConvNext REAL-ESRGAN" },
+        { "value": "REAL-ESRGAN.pth", "label": "REAL-ESRGAN" }
+      ],
       "labels": {
         "input": "Input Image",
         "output": "Output",

@@ -375,6 +375,7 @@ class BackendApp:
                 "ui": {
                     "title": loader.get("frontend.ui.title", "Image Reconstruction"),
                     "enable_model_selection": loader.get("frontend.ui.enable_model_selection", False),
+                    "models": loader.get("frontend.ui.models", []),
                     "labels": loader.get("frontend.ui.labels", default_labels),
                     "messages": loader.get("frontend.ui.messages", default_messages),
                     "preview_enabled": loader.get("frontend.ui.preview_enabled", True),
