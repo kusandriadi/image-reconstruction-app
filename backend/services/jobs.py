@@ -367,7 +367,8 @@ class JobManager:
             logger.info(f"Job {job_id}: Cancelled by user after {elapsed:.2f} seconds")
         except Exception as e:
             elapsed = time.time() - start_time
-            self._update(job_id, status="failed", message="failed", error=str(e), elapsed_seconds=round(elapsed, 2))
+            # Store a generic, client-safe error; the full detail goes to the log only.
+            self._update(job_id, status="failed", message="failed", error="Processing failed", elapsed_seconds=round(elapsed, 2))
             logger.error(f"Job {job_id}: Failed after {elapsed:.2f} seconds with error: {e}", exc_info=True)
         finally:
             with self._lock:

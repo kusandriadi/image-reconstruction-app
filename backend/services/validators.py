@@ -47,7 +47,7 @@ class UploadValidator:
         >>> upload_path = await validator.save(job_id="abc123", file=uploaded_file)
     """
 
-    def __init__(self, allowed_mime: Set[str], allowed_ext: Set[str], max_bytes: int, uploads_dir: Path):
+    def __init__(self, allowed_mime: Set[str], allowed_ext: Set[str], max_bytes: int, uploads_dir: Path, max_pixels: int = 40_000_000):
         """Initialize the upload validator with constraints.
 
         Args:
@@ -55,11 +55,14 @@ class UploadValidator:
             allowed_ext: Set of allowed file extensions (must include dot, e.g., ".png").
             max_bytes: Maximum file size in bytes.
             uploads_dir: Directory path where validated files will be saved.
+            max_pixels: Maximum allowed total pixels (width * height) to guard against
+                decompression bombs — a tiny file that decodes to a huge image.
         """
         self.allowed_mime = allowed_mime
         self.allowed_ext = allowed_ext
         self.max_bytes = max_bytes
         self.uploads_dir = uploads_dir
+        self.max_pixels = max_pixels
 
     @staticmethod
     def sanitize_filename(name: str, allowed_ext: Set[str]) -> str:
@@ -129,20 +132,37 @@ class UploadValidator:
             raise HTTPException(status_code=415, detail=f"Unsupported media type: {content_type or 'missing'}")
 
     def _check_image_decodable(self, content: bytes):
-        """Verify that the uploaded file is a valid, decodable image.
+        """Verify that the uploaded file is a valid, decodable image of sane size.
 
-        Uses PIL to attempt opening and verifying the image. This prevents
-        malicious files masquerading as images from being processed.
+        Uses PIL to attempt opening and verifying the image, and rejects images
+        whose pixel count exceeds max_pixels. This prevents malicious files
+        masquerading as images, and decompression bombs (a tiny file that decodes
+        to a huge image and exhausts memory/GPU).
 
         Args:
             content: Raw file content bytes.
 
         Raises:
             HTTPException 400: If file cannot be decoded as a valid image.
+            HTTPException 413: If the image dimensions exceed max_pixels.
         """
         try:
+            # Read dimensions from the header (cheap, does not decode pixels).
+            img = Image.open(io.BytesIO(content))
+            width, height = img.size
+        except (UnidentifiedImageError, Image.DecompressionBombError, OSError):
+            raise HTTPException(status_code=400, detail="Invalid image file")
+
+        if width * height > self.max_pixels:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Image too large: {width}x{height} exceeds {self.max_pixels} pixels",
+            )
+
+        # Full integrity check now that the dimensions are known to be safe.
+        try:
             Image.open(io.BytesIO(content)).verify()
-        except UnidentifiedImageError:
+        except (UnidentifiedImageError, Image.DecompressionBombError, OSError):
             raise HTTPException(status_code=400, detail="Invalid image file")
 
     async def save(self, job_id: str, file: UploadFile) -> Path:

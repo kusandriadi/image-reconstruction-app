@@ -132,7 +132,9 @@ class Reconstructor:
                     self.model = torch.jit.load(self.model_path, map_location=self.device)
                 else:
                     logger.debug("Loading PyTorch model (.pth)")
-                    loaded = torch.load(self.model_path, map_location=self.device, weights_only=False)
+                    # weights_only=True blocks arbitrary code execution via pickle
+                    # when loading checkpoints (these are Real-ESRGAN state dicts).
+                    loaded = torch.load(self.model_path, map_location=self.device, weights_only=True)
 
                     # Handle different checkpoint formats
                     if isinstance(loaded, dict):
@@ -184,7 +186,7 @@ class Reconstructor:
                 if self.device != "cpu":
                     try:
                         logger.info("Attempting to load model on CPU")
-                        loaded = torch.load(self.model_path, map_location="cpu", weights_only=False)
+                        loaded = torch.load(self.model_path, map_location="cpu", weights_only=True)
                         if isinstance(loaded, dict) and 'params_ema' in loaded:
                             from backend.models.rrdbnet_arch import RRDBNet
                             self.model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64,

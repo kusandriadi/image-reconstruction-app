@@ -67,11 +67,14 @@ class BackendApp:
                 logger.info("Application shutdown - stopping background services")
                 self.cleanup.stop()
 
+        # Disable interactive docs/openapi in production unless explicitly enabled.
+        docs_kwargs = {} if config.docs_enabled else {"docs_url": None, "redoc_url": None, "openapi_url": None}
         self.app = FastAPI(
             title=config.app_name,
             version=config.app_version,
             description=config.app_description,
             lifespan=lifespan,
+            **docs_kwargs,
         )
         self._configure_cors()
 
@@ -92,6 +95,7 @@ class BackendApp:
             allowed_ext=self.config.allowed_ext,
             max_bytes=self.config.max_upload_bytes,
             uploads_dir=self.config.uploads_dir,
+            max_pixels=self.config.max_pixels,
         )
         self.cleanup = CleanupService(
             uploads_dir=str(self.config.uploads_dir),
@@ -178,6 +182,20 @@ class BackendApp:
                 logger.warning(f"API: Rejected job - server busy ({self.config.max_concurrent_jobs} jobs running)")
                 raise HTTPException(status_code=429, detail=msg)
 
+            # Validate the requested model: it must be a bare filename that resolves
+            # to a real file directly inside the model directory. This blocks path
+            # traversal / absolute paths from pointing torch.load at arbitrary files.
+            safe_model = Path(model).name
+            model_file = (self.config.model_dir / safe_model).resolve()
+            if (
+                model_file.parent != self.config.model_dir.resolve()
+                or model_file.suffix.lower() not in {".pth", ".pt"}
+                or not model_file.is_file()
+            ):
+                logger.warning(f"API: Rejected job - invalid model requested: {model!r}")
+                raise HTTPException(status_code=400, detail="Invalid model requested")
+            model = safe_model
+
             job_id = uuid.uuid4().hex
             logger.info(f"API: POST /api/reconstructions - Creating job {job_id} with model {model}")
             try:
@@ -195,10 +213,11 @@ class BackendApp:
                         "{max_concurrent}", str(self.config.max_concurrent_jobs)
                     )
                     raise HTTPException(status_code=429, detail=msg)
-                raise HTTPException(status_code=500, detail=str(e))
+                logger.error(f"API: Job {job_id} creation error: {e}", exc_info=True)
+                raise HTTPException(status_code=500, detail="Internal server error")
             except Exception as e:
                 logger.error(f"API: Job {job_id} creation error: {e}", exc_info=True)
-                raise HTTPException(status_code=500, detail=str(e))
+                raise HTTPException(status_code=500, detail="Internal server error")
 
         @app.get("/api/reconstructions/{job_id}")
         def get_job(job_id: str):

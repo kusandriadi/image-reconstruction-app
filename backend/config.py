@@ -63,12 +63,14 @@ class Config:
     app_name: str = "Image Reconstruction API"
     app_version: str = "1.0.0"
     app_description: str = "Image reconstruction service using PyTorch models"
+    docs_enabled: bool = False
     model_device: str = "auto"
     allowed_origins: List[str] = field(default_factory=lambda: ["*"])
     cors_allow_credentials: bool = True
     cors_allow_methods: List[str] = field(default_factory=lambda: ["*"])
     cors_allow_headers: List[str] = field(default_factory=lambda: ["*"])
     max_upload_mb: float = 10.0
+    max_pixels: int = 40_000_000
     allowed_mime: Set[str] = field(default_factory=lambda: {"image/png", "image/jpeg", "image/jpg", "image/webp"})
     allowed_ext: Set[str] = field(default_factory=lambda: {".png", ".jpg", ".jpeg", ".webp"})
     max_concurrent_jobs: int = 2
@@ -147,6 +149,7 @@ class Config:
         app_name = loader.get("app.name", "Image Reconstruction API")
         app_version = loader.get("app.version", "1.0.0")
         app_description = loader.get("app.description", "Image reconstruction service using PyTorch models")
+        docs_enabled = bool(loader.get("app.docs_enabled", False))
 
         # Read directory paths from config
         data_dir_rel = loader.get("backend.directories.data_dir", "backend/data")
@@ -182,6 +185,7 @@ class Config:
 
         # Read upload constraints
         max_upload_mb = float(loader.get("backend.upload.max_size_mb", 10))
+        max_pixels = int(loader.get("backend.upload.max_pixels", 40_000_000))
         allowed_mime_list = loader.get("backend.upload.allowed_mime_types", [
             "image/png", "image/jpeg", "image/jpg", "image/webp"
         ])
@@ -221,12 +225,14 @@ class Config:
             app_name=app_name,
             app_version=app_version,
             app_description=app_description,
+            docs_enabled=docs_enabled,
             model_device=model_device,
             allowed_origins=allowed_origins,
             cors_allow_credentials=cors_allow_credentials,
             cors_allow_methods=cors_allow_methods,
             cors_allow_headers=cors_allow_headers,
             max_upload_mb=max_upload_mb,
+            max_pixels=max_pixels,
             allowed_mime=set(allowed_mime_list),
             allowed_ext=set(allowed_ext_list),
             max_concurrent_jobs=max_concurrent_jobs,

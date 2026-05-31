@@ -2,7 +2,8 @@
   "app": {
     "name": "Image Reconstruction API",
     "version": "1.0.0",
-    "description": "Image reconstruction service using PyTorch models"
+    "description": "Image reconstruction service using PyTorch models",
+    "docs_enabled": false
   },
   "backend": {
     "host": "0.0.0.0",
@@ -14,6 +15,7 @@
     },
     "upload": {
       "max_size_mb": 10,
+      "max_pixels": 40000000,
       "allowed_mime_types": [
         "image/png",
         "image/jpeg",
@@ -28,9 +30,14 @@
       ]
     },
     "cors": {
-      "allowed_origins": ["*"],
-      "allow_credentials": true,
-      "allow_methods": ["*"],
+      "allowed_origins": [
+        "https://pixup.id",
+        "https://www.pixup.id",
+        "http://localhost:5173",
+        "http://localhost:8000"
+      ],
+      "allow_credentials": false,
+      "allow_methods": ["GET", "POST", "DELETE", "OPTIONS"],
       "allow_headers": ["*"]
     },
     "directories": {
