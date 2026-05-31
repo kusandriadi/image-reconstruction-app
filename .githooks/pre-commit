@@ -1,0 +1,12 @@
+#!/bin/sh
+# Auto-bump the service-worker cache version when frontend shell files change,
+# so the PWA always re-installs with the latest assets.
+# Enable once with:  git config core.hooksPath .githooks
+
+if git diff --cached --name-only | grep -qE '^frontend/(index\.html|styles\.css|script\.js|manifest\.json)$'; then
+    if command -v node >/dev/null 2>&1; then
+        node frontend/scripts/version-sw.js && git add frontend/sw.js
+    else
+        echo "pre-commit: node not found, skipping sw.js version bump" >&2
+    fi
+fi
