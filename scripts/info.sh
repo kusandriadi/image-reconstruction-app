@@ -2,7 +2,7 @@
 
 ################################################################################
 # Info Script - Show application status and resource usage
-# Usage: ./info.sh
+# Usage: scripts/info.sh
 ################################################################################
 
 # Colors for output
@@ -40,10 +40,15 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 ################################################################################
-# Check if docker-compose is installed
+# Detect Docker Compose command (v2 plugin preferred, fall back to v1)
 ################################################################################
-if ! command -v docker-compose &> /dev/null; then
-    print_error "Docker Compose is not installed"
+COMPOSE=""
+if docker compose version &> /dev/null; then
+    COMPOSE="docker compose"
+elif command -v docker-compose &> /dev/null; then
+    COMPOSE="docker-compose"
+else
+    print_error "Docker Compose not found (need 'docker compose' v2 or 'docker-compose' v1)"
     exit 1
 fi
 
@@ -64,14 +69,14 @@ BACKEND_RUNNING=false
 FRONTEND_RUNNING=false
 
 # Check if containers are running
-if docker-compose ps | grep -q "backend.*Up"; then
+if $COMPOSE ps | grep -q "backend.*Up"; then
     BACKEND_RUNNING=true
     print_success "Backend: Running"
 else
     print_error "Backend: Not running"
 fi
 
-if docker-compose ps | grep -q "frontend.*Up"; then
+if $COMPOSE ps | grep -q "frontend.*Up"; then
     FRONTEND_RUNNING=true
     print_success "Frontend: Running"
 else
@@ -83,7 +88,7 @@ echo ""
 if [ "$BACKEND_RUNNING" = false ] && [ "$FRONTEND_RUNNING" = false ]; then
     print_warning "Application is not running"
     echo ""
-    print_info "Start with: scripts/deploy.sh [domain] [email]"
+    print_info "Start with: scripts/deploy-production.sh [domain] [email]  (or scripts/deploy-local.sh)"
     exit 0
 fi
 
@@ -94,12 +99,12 @@ print_header "⏱️  UPTIME"
 echo ""
 
 if [ "$BACKEND_RUNNING" = true ]; then
-    BACKEND_UPTIME=$(docker-compose ps backend | grep Up | awk '{for(i=1;i<=NF;i++) if($i=="Up") print $(i+1), $(i+2)}')
+    BACKEND_UPTIME=$($COMPOSE ps backend | grep Up | awk '{for(i=1;i<=NF;i++) if($i=="Up") print $(i+1), $(i+2)}')
     echo "Backend:  $BACKEND_UPTIME"
 fi
 
 if [ "$FRONTEND_RUNNING" = true ]; then
-    FRONTEND_UPTIME=$(docker-compose ps frontend | grep Up | awk '{for(i=1;i<=NF;i++) if($i=="Up") print $(i+1), $(i+2)}')
+    FRONTEND_UPTIME=$($COMPOSE ps frontend | grep Up | awk '{for(i=1;i<=NF;i++) if($i=="Up") print $(i+1), $(i+2)}')
     echo "Frontend: $FRONTEND_UPTIME"
 fi
 
@@ -191,22 +196,21 @@ print_header "🌐 NETWORK"
 echo ""
 
 if [ "$FRONTEND_RUNNING" = true ]; then
-    FRONTEND_PORT=$(docker-compose port frontend 80 2>/dev/null | cut -d: -f2)
+    FRONTEND_PORT=$($COMPOSE port frontend 80 2>/dev/null | cut -d: -f2)
     if [ -n "$FRONTEND_PORT" ]; then
         echo "Frontend: http://localhost:$FRONTEND_PORT"
     fi
 
-    FRONTEND_SSL_PORT=$(docker-compose port frontend 443 2>/dev/null | cut -d: -f2)
+    FRONTEND_SSL_PORT=$($COMPOSE port frontend 443 2>/dev/null | cut -d: -f2)
     if [ -n "$FRONTEND_SSL_PORT" ]; then
         echo "HTTPS:    https://localhost:$FRONTEND_SSL_PORT"
     fi
 fi
 
 if [ "$BACKEND_RUNNING" = true ]; then
-    BACKEND_PORT=$(docker-compose port backend 8000 2>/dev/null | cut -d: -f2)
+    BACKEND_PORT=$($COMPOSE port backend 8000 2>/dev/null | cut -d: -f2)
     if [ -n "$BACKEND_PORT" ]; then
         echo "Backend:  http://localhost:$BACKEND_PORT"
-        echo "API Docs: http://localhost:$BACKEND_PORT/docs"
     fi
 fi
 
@@ -250,7 +254,7 @@ echo ""
 
 if [ "$BACKEND_RUNNING" = true ]; then
     echo "Backend logs:"
-    docker-compose logs --tail=5 backend 2>/dev/null | sed 's/^/  /'
+    $COMPOSE logs --tail=5 backend 2>/dev/null | sed 's/^/  /'
     echo ""
 fi
 
@@ -269,7 +273,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 print_info "Useful commands:"
-echo "  • View logs:     docker-compose logs -f"
+echo "  • View logs:     scripts/logs.sh"
 echo "  • Restart:       scripts/restart.sh"
 echo "  • Stop:          scripts/stop.sh"
 echo "  • Refresh info:  scripts/info.sh"

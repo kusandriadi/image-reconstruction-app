@@ -36,13 +36,17 @@ Sets up a venv, installs deps, starts backend (FastAPI) and frontend (static ser
 
 ---
 
-## VPS Deployment
+## Deployment
 
 ```bash
-# Deploy with SSL
-scripts/deploy.sh example.com admin@example.com
+# Production: full one-shot deploy with SSL (installs Docker, downloads models,
+# provisions a Let's Encrypt cert, starts frontend + backend)
+scripts/deploy-production.sh example.com admin@example.com
 
-# Update after code changes
+# Local: HTTP-only stack on http://localhost (no domain/SSL needed)
+scripts/deploy-local.sh
+
+# Update after code changes (git pull + rebuild + restart)
 scripts/restart.sh
 
 # Stop
@@ -51,7 +55,7 @@ scripts/stop.sh
 # Status dashboard
 scripts/info.sh
 
-# Live logs
+# Live logs (follow). Options: scripts/logs.sh [backend|frontend] [-n N] [--no-follow]
 scripts/logs.sh
 ```
 
@@ -113,12 +117,13 @@ image-reconstruction/
 │   ├── styles.css
 │   └── script.js
 └── scripts/
-    ├── deploy.sh            # VPS deployment with SSL
-    ├── restart.sh           # Git pull + rebuild
+    ├── deploy-production.sh # One-shot production deploy (Docker + SSL)
+    ├── deploy-local.sh      # Local HTTP-only deploy
+    ├── restart.sh           # Git pull + rebuild + restart
     ├── stop.sh              # Graceful shutdown
     ├── info.sh              # Status dashboard
-    ├── logs.sh              # Live log viewer
-    └── download-models.sh   # Download model files
+    ├── logs.sh              # Log viewer (follow/tail)
+    └── download-models.sh   # Download model weights from GitHub Release
 ```
 
 ---

@@ -1,8 +1,11 @@
 #!/bin/bash
 
 ################################################################################
-# Quick Update Script - Pull changes from GitHub and restart services
-# Usage: ./update.sh
+# Update & Restart Script - Pull latest code from GitHub and restart services
+# Usage: scripts/restart.sh
+#
+# This pulls the latest commits, rebuilds the Docker images if code or
+# dependencies changed, and restarts the stack.
 ################################################################################
 
 set -e  # Exit on error
@@ -48,15 +51,20 @@ if [ ! -d ".git" ]; then
     exit 1
 fi
 
-# Check if docker-compose is installed
-if ! command -v docker-compose &> /dev/null; then
-    print_error "Docker Compose is not installed"
+# Detect Docker Compose command (v2 plugin preferred, fall back to v1)
+COMPOSE=""
+if docker compose version &> /dev/null; then
+    COMPOSE="docker compose"
+elif command -v docker-compose &> /dev/null; then
+    COMPOSE="docker-compose"
+else
+    print_error "Docker Compose not found (need 'docker compose' v2 or 'docker-compose' v1)"
     exit 1
 fi
 
 # Check if docker-compose.yml exists
 if [ ! -f "docker-compose.yml" ]; then
-    print_error "docker-compose.yml not found. Please run deployment first: scripts/deploy.sh"
+    print_error "docker-compose.yml not found. Please run deployment first: scripts/deploy-production.sh"
     exit 1
 fi
 
@@ -65,13 +73,13 @@ fi
 ################################################################################
 print_info "Checking if application is running..."
 
-if ! docker-compose ps 2>/dev/null | grep -q "Up"; then
+if ! $COMPOSE ps 2>/dev/null | grep -q "Up"; then
     print_error "Application is not running!"
     echo ""
     print_info "Current status:"
-    docker-compose ps
+    $COMPOSE ps
     echo ""
-    print_warning "Please deploy the application first using: scripts/deploy.sh [domain] [email]"
+    print_warning "Please deploy the application first: scripts/deploy-production.sh [domain] [email]"
     exit 1
 fi
 
@@ -120,7 +128,7 @@ if [ "$LOCAL" = "$REMOTE" ]; then
     print_success "Already up to date! No changes to pull."
     echo ""
     print_info "Current services status:"
-    docker-compose ps
+    $COMPOSE ps
     exit 0
 fi
 
@@ -170,19 +178,19 @@ if [ "$REBUILD_NEEDED" = true ]; then
 
     # Show current containers before stopping
     print_info "Current containers:"
-    docker-compose ps
+    $COMPOSE ps
     echo ""
 
     print_info "Building new images..."
-    docker-compose build --quiet
+    $COMPOSE build --quiet
 
     print_info "Restarting services with new build..."
-    docker-compose up -d --build
+    $COMPOSE up -d --build
 
     print_success "Services rebuilt and restarted"
 else
     print_info "[5/6] Restarting services (no rebuild needed)..."
-    docker-compose restart
+    $COMPOSE restart
     print_success "Services restarted"
 fi
 
@@ -192,42 +200,38 @@ echo ""
 # Step 6: Verify deployment
 ################################################################################
 print_info "[6/6] Verifying deployment..."
-sleep 5
 
-# Check if containers are running
-if docker-compose ps | grep -q "Up"; then
+# Wait for the backend to report healthy
+printf "${BLUE}→ Waiting for backend"
+BACKEND_READY=false
+for i in $(seq 1 30); do
+    if curl -fs http://localhost:8000/api/health > /dev/null 2>&1; then
+        BACKEND_READY=true
+        break
+    fi
+    printf "."
+    sleep 3
+done
+printf "${NC}\n"
+if [ "$BACKEND_READY" = true ]; then
+    print_success "Backend is healthy"
+else
+    print_warning "Backend health check timed out — check: scripts/logs.sh backend"
+fi
+
+# Confirm containers are up
+if $COMPOSE ps | grep -q "Up"; then
     print_success "Containers are running"
 else
     print_error "Some containers failed to start"
-    print_info "Check logs with: docker-compose logs"
+    print_info "Check logs with: scripts/logs.sh"
     exit 1
 fi
-
-# Check backend health
-print_info "Checking backend health..."
-MAX_RETRIES=6
-RETRY=0
-while [ $RETRY -lt $MAX_RETRIES ]; do
-    if curl -f http://localhost:8000/api/health > /dev/null 2>&1; then
-        print_success "Backend is healthy"
-        break
-    else
-        RETRY=$((RETRY+1))
-        if [ $RETRY -lt $MAX_RETRIES ]; then
-            sleep 3
-        else
-            print_warning "Backend health check timed out"
-            print_info "Check logs with: docker-compose logs backend"
-        fi
-    fi
-done
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 print_success "UPDATE COMPLETED SUCCESSFULLY!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-print_info "Changes pulled and services restarted"
 echo ""
 
 # Get domain from nginx config if available
@@ -240,16 +244,14 @@ fi
 if [ -n "$DOMAIN" ] && [ "$DOMAIN" != "_" ]; then
     echo "Application accessible at:"
     echo ""
-    echo -e "  🌐 Frontend:    \033]8;;https://$DOMAIN\033\\https://$DOMAIN\033]8;;\033\\"
+    echo -e "  🌐 Website:     \033]8;;https://$DOMAIN\033\\https://$DOMAIN\033]8;;\033\\"
     echo -e "  🔧 Backend API: \033]8;;https://$DOMAIN/api/\033\\https://$DOMAIN/api/\033]8;;\033\\"
-    echo -e "  📚 API Docs:    \033]8;;https://$DOMAIN/docs\033\\https://$DOMAIN/docs\033]8;;\033\\"
     echo -e "  ❤️  Health:      \033]8;;https://$DOMAIN/api/health\033\\https://$DOMAIN/api/health\033]8;;\033\\"
 else
     echo "Application accessible at:"
     echo ""
-    echo -e "  🌐 Frontend:    \033]8;;http://localhost\033\\http://localhost\033]8;;\033\\"
-    echo -e "  🔧 Backend API: \033]8;;http://localhost:8000\033\\http://localhost:8000\033]8;;\033\\"
-    echo -e "  📚 API Docs:    \033]8;;http://localhost:8000/docs\033\\http://localhost:8000/docs\033]8;;\033\\"
+    echo -e "  🌐 Website:     \033]8;;http://localhost\033\\http://localhost\033]8;;\033\\"
+    echo -e "  🔧 Backend API: \033]8;;http://localhost:8000/api/\033\\http://localhost:8000/api/\033]8;;\033\\"
     echo -e "  ❤️  Health:      \033]8;;http://localhost:8000/api/health\033\\http://localhost:8000/api/health\033]8;;\033\\"
 fi
 
@@ -258,10 +260,10 @@ echo -e "${GREEN}(Click links above to open in browser)${NC}"
 echo ""
 
 echo "Current status:"
-docker-compose ps
+$COMPOSE ps
 echo ""
 echo "Useful commands:"
-echo "  • View logs:        docker-compose logs -f"
+echo "  • View logs:        scripts/logs.sh"
 echo "  • Check status:     scripts/info.sh"
-echo "  • Restart service:  docker-compose restart [backend|frontend]"
+echo "  • Stop:             scripts/stop.sh"
 echo ""

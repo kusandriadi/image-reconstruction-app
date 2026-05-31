@@ -5,7 +5,7 @@
 # Runs frontend (Nginx) + backend (FastAPI) via Docker Compose, auto-downloads
 # the model weights, and provisions a Let's Encrypt SSL certificate for the domain.
 #
-# Usage: scripts/deploy.sh [your-domain.com] [your-email@example.com]
+# Usage: scripts/deploy-production.sh [your-domain.com] [your-email@example.com]
 # Run from the repository root.
 ################################################################################
 
@@ -60,7 +60,7 @@ DOMAIN=${1:-}
 EMAIL=${2:-}
 
 if [ -z "$DOMAIN" ]; then
-    print_error "Usage: scripts/deploy.sh [your-domain.com] [your-email@example.com]"
+    print_error "Usage: scripts/deploy-production.sh [your-domain.com] [your-email@example.com]"
     echo ""
     echo "Example: scripts/deploy.sh example.com admin@example.com"
     exit 1
@@ -68,7 +68,7 @@ fi
 
 if [ -z "$EMAIL" ]; then
     print_error "Email is required for SSL certificate"
-    print_error "Usage: scripts/deploy.sh [your-domain.com] [your-email@example.com]"
+    print_error "Usage: scripts/deploy-production.sh [your-domain.com] [your-email@example.com]"
     exit 1
 fi
 
@@ -320,63 +320,70 @@ print_success "SSL auto-renewal configured"
 echo ""
 
 ################################################################################
-# Final checks
+# Wait for services to be fully ready
 ################################################################################
-print_info "Running final checks..."
-sleep 10
+print_info "Waiting for frontend & backend to become ready (this can take a minute)..."
 
-# Check if containers are running
-if $COMPOSE ps | grep -q "Up"; then
-    print_success "Containers are running"
+# Wait for the backend to report healthy
+printf "${BLUE}→ Waiting for backend"
+BACKEND_READY=false
+for i in $(seq 1 40); do
+    if curl -fs http://localhost:8000/api/health > /dev/null 2>&1; then
+        BACKEND_READY=true
+        break
+    fi
+    printf "."
+    sleep 3
+done
+printf "${NC}\n"
+if [ "$BACKEND_READY" = true ]; then
+    print_success "Backend is healthy"
 else
-    print_error "Some containers failed to start"
-    print_info "Check logs with: $COMPOSE logs"
+    print_error "Backend did not become healthy in time"
+    print_info "Check logs with: scripts/logs.sh backend"
     exit 1
 fi
 
-# Check backend health
-print_info "Checking backend health..."
-MAX_RETRIES=6
-RETRY=0
-while [ $RETRY -lt $MAX_RETRIES ]; do
-    if curl -f http://localhost:8000/api/health > /dev/null 2>&1; then
-        print_success "Backend is healthy"
+# Wait for the frontend (Nginx). Port 80 returns a 301 redirect to HTTPS, which
+# still proves Nginx is up and serving.
+printf "${BLUE}→ Waiting for frontend"
+FRONTEND_READY=false
+for i in $(seq 1 20); do
+    if curl -fsI http://localhost > /dev/null 2>&1 || curl -fskI https://localhost > /dev/null 2>&1; then
+        FRONTEND_READY=true
         break
-    else
-        RETRY=$((RETRY+1))
-        if [ $RETRY -lt $MAX_RETRIES ]; then
-            print_info "Waiting for backend to start... ($RETRY/$MAX_RETRIES)"
-            sleep 5
-        else
-            print_warning "Backend health check timed out"
-            print_info "Check logs with: $COMPOSE logs backend"
-        fi
     fi
+    printf "."
+    sleep 3
 done
+printf "${NC}\n"
+if [ "$FRONTEND_READY" = true ]; then
+    print_success "Frontend is serving"
+else
+    print_warning "Frontend not responding yet — check: scripts/logs.sh frontend"
+fi
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-print_success "DEPLOYMENT COMPLETED SUCCESSFULLY!"
+print_success "DEPLOYMENT COMPLETE — frontend & backend are live!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "Your application is now live at:"
+echo "Your website is now live at:"
 echo ""
-echo -e "  🌐 Frontend:    \033]8;;https://$DOMAIN\033\\https://$DOMAIN\033]8;;\033\\"
+echo -e "  🌐 Website:     \033]8;;https://$DOMAIN\033\\https://$DOMAIN\033]8;;\033\\"
 echo -e "  🔧 Backend API: \033]8;;https://$DOMAIN/api/\033\\https://$DOMAIN/api/\033]8;;\033\\"
 echo -e "  ❤️  Health:      \033]8;;https://$DOMAIN/api/health\033\\https://$DOMAIN/api/health\033]8;;\033\\"
 echo ""
 echo -e "${GREEN}(Click links above to open in browser)${NC}"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Useful Commands:"
+echo "Manage the application:"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  View logs:          $COMPOSE logs -f"
-echo "  Restart services:   $COMPOSE restart"
-echo "  Stop services:      $COMPOSE down"
-echo "  Update app:         git pull && $COMPOSE up -d --build"
-echo "  Check status:       $COMPOSE ps"
-echo "  Test SSL renewal:   sudo certbot renew --dry-run"
-echo ""
+echo "  • Status / info:    scripts/info.sh"
+echo "  • Live logs:        scripts/logs.sh        (or: scripts/logs.sh backend|frontend)"
+echo "  • Restart / update: scripts/restart.sh"
+echo "  • Stop:             scripts/stop.sh"
+echo "  • Test SSL renewal: sudo certbot renew --dry-run"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 print_success "SSL certificate will auto-renew automatically"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

@@ -36,9 +36,14 @@ echo "  Stop Image Reconstruction Application"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# Check if docker-compose is installed
-if ! command -v docker-compose &> /dev/null; then
-    print_error "Docker Compose is not installed"
+# Detect Docker Compose command (v2 plugin preferred, fall back to v1)
+COMPOSE=""
+if docker compose version &> /dev/null; then
+    COMPOSE="docker compose"
+elif command -v docker-compose &> /dev/null; then
+    COMPOSE="docker-compose"
+else
+    print_error "Docker Compose not found (need 'docker compose' v2 or 'docker-compose' v1)"
     exit 1
 fi
 
@@ -53,11 +58,11 @@ fi
 ################################################################################
 print_info "Checking application status..."
 
-if ! docker-compose ps | grep -q "Up"; then
+if ! $COMPOSE ps | grep -q "Up"; then
     print_warning "Application is not running"
     echo ""
     print_info "Current status:"
-    docker-compose ps
+    $COMPOSE ps
     echo ""
     print_info "Nothing to stop. Application is already stopped."
     exit 0
@@ -70,7 +75,7 @@ echo ""
 # Show current status
 ################################################################################
 print_info "Current running containers:"
-docker-compose ps
+$COMPOSE ps
 echo ""
 
 ################################################################################
@@ -78,7 +83,7 @@ echo ""
 ################################################################################
 print_info "Stopping all services..."
 
-docker-compose down
+$COMPOSE down
 
 print_success "All services stopped successfully"
 echo ""
@@ -89,9 +94,9 @@ echo ""
 print_info "Verifying shutdown..."
 sleep 2
 
-if docker-compose ps | grep -q "Up"; then
+if $COMPOSE ps | grep -q "Up"; then
     print_warning "Some containers are still running"
-    docker-compose ps
+    $COMPOSE ps
 else
     print_success "All containers stopped"
 fi
@@ -102,6 +107,7 @@ print_success "APPLICATION STOPPED SUCCESSFULLY"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "To start the application again, run:"
-echo "  • For updates: ./restart.sh"
-echo "  • Fresh start: ./deploy.sh [domain] [email]"
+echo "  • Production (with SSL):  scripts/deploy-production.sh [domain] [email]"
+echo "  • Local (HTTP):           scripts/deploy-local.sh"
+echo "  • Update & restart:       scripts/restart.sh"
 echo ""
