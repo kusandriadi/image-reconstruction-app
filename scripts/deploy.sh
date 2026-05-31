@@ -1,8 +1,12 @@
 #!/bin/bash
 
 ################################################################################
-# Automated VPS Deployment Script for Image Reconstruction App
-# Usage: ./deploy-to-vps.sh [your-domain.com] [your-email@example.com]
+# One-shot production deployment for the Image Reconstruction App.
+# Runs frontend (Nginx) + backend (FastAPI) via Docker Compose, auto-downloads
+# the model weights, and provisions a Let's Encrypt SSL certificate for the domain.
+#
+# Usage: scripts/deploy.sh [your-domain.com] [your-email@example.com]
+# Run from the repository root.
 ################################################################################
 
 set -e  # Exit on error
@@ -42,15 +46,15 @@ DOMAIN=${1:-}
 EMAIL=${2:-}
 
 if [ -z "$DOMAIN" ]; then
-    print_error "Usage: ./deploy-to-vps.sh [your-domain.com] [your-email@example.com]"
+    print_error "Usage: scripts/deploy.sh [your-domain.com] [your-email@example.com]"
     echo ""
-    echo "Example: ./deploy-to-vps.sh example.com admin@example.com"
+    echo "Example: scripts/deploy.sh example.com admin@example.com"
     exit 1
 fi
 
 if [ -z "$EMAIL" ]; then
     print_error "Email is required for SSL certificate"
-    print_error "Usage: ./deploy-to-vps.sh [your-domain.com] [your-email@example.com]"
+    print_error "Usage: scripts/deploy.sh [your-domain.com] [your-email@example.com]"
     exit 1
 fi
 
@@ -137,18 +141,20 @@ print_info "[5/11] Checking model files..."
 MODEL_FOUND=false
 if [ -f "backend/model/REAL-ESRGAN.pth" ] && [ -f "backend/model/ConvNext_REAL-ESRGAN.pth" ]; then
     MODEL_FOUND=true
-    print_success "Model files found"
+    print_success "Model files already present"
 else
-    print_warning "Model files not found!"
-    print_warning "Please upload these files to backend/model/:"
-    echo "  - REAL-ESRGAN.pth"
-    echo "  - ConvNext_REAL-ESRGAN.pth"
-    echo ""
-    read -p "Continue without model files? (y/N) " -n 1 -r
-    echo ""
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        print_error "Deployment cancelled. Please upload model files first."
-        exit 1
+    print_info "Model files missing — downloading from GitHub Release (models-v1)..."
+    if bash "$(dirname "$0")/download-models.sh"; then
+        MODEL_FOUND=true
+        print_success "Model files downloaded"
+    else
+        print_warning "Automatic model download failed"
+        read -p "Continue without model files? (y/N) " -n 1 -r
+        echo ""
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            print_error "Deployment cancelled. Run scripts/download-models.sh manually, then retry."
+            exit 1
+        fi
     fi
 fi
 echo ""
