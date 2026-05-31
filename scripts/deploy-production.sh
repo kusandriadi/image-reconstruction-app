@@ -49,6 +49,10 @@ detect_compose() {
     fi
 }
 
+# Run from the repo root regardless of where this script is invoked from
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/.."
+
 # Check if running as root
 if [ "$EUID" -eq 0 ]; then
     print_error "Please do not run as root. Use a regular user with sudo privileges."
@@ -169,7 +173,7 @@ if [ -f "backend/model/REAL-ESRGAN.pth" ] && [ -f "backend/model/ConvNext_REAL-E
     print_success "Model files already present"
 else
     print_info "Model files missing — downloading from GitHub Release (models-v1)..."
-    if bash "$(dirname "$0")/download-models.sh"; then
+    if bash "$SCRIPT_DIR/download-models.sh"; then
         MODEL_FOUND=true
         print_success "Model files downloaded"
     else

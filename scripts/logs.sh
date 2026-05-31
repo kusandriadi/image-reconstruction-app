@@ -31,6 +31,10 @@ print_error()  { echo -e "${RED}✗ $1${NC}"; }
 print_info()   { echo -e "${BLUE}→ $1${NC}"; }
 print_header() { echo -e "${CYAN}$1${NC}"; }
 
+# Run from the repo root regardless of where this script is invoked from
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/.."
+
 ################################################################################
 # Detect Docker Compose command (v2 plugin preferred, fall back to v1)
 ################################################################################

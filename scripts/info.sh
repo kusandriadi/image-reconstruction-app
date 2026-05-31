@@ -33,6 +33,10 @@ print_header() {
     echo -e "${CYAN}$1${NC}"
 }
 
+# Run from the repo root regardless of where this script is invoked from
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/.."
+
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Application Status & Resource Usage"
