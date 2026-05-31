@@ -210,6 +210,9 @@ backend/data/outputs/
 backend/data/jobs/
 backend/data/models/*.pth
 backend/model/*.pth
+# Never commit model weights anywhere (they live in GitHub Releases: models-v1)
+*.pth
+*.pt
 .cursorignore
 .cursorindexingignore
 
