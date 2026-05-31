@@ -131,10 +131,12 @@ REMOTE=$(git rev-parse origin/$CURRENT_BRANCH)
 if [ "$LOCAL" = "$REMOTE" ]; then
     print_success "Already up to date — no new commits."
     echo ""
-    # Still restart so config.json / mounted-volume changes are picked up.
-    print_info "Restarting services to apply any config changes..."
-    $COMPOSE restart
-    print_success "Services restarted"
+    # Rebuild + recreate so BOTH baked-in code changes (app.py is copied into the
+    # image) and mounted config.json changes are applied, even when there is
+    # nothing new to pull (e.g. after a manual git pull).
+    print_info "Rebuilding & recreating services to apply current code/config..."
+    $COMPOSE up -d --build --force-recreate
+    print_success "Services rebuilt & restarted"
     echo ""
     print_info "Current services status:"
     $COMPOSE ps
