@@ -71,7 +71,7 @@
     },
     "ui": {
       "title": "PixUp",
-      "enable_model_selection": false,
+      "enable_model_selection": true,
       "labels": {
         "input": "Input Image",
         "output": "Output",
