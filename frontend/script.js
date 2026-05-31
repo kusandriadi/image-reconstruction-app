@@ -326,9 +326,9 @@ function startPolling() {
       const pct = Math.max(0, Math.min(100, job.progress || 0));
       updateProgress(pct);
 
-      // Display status without elapsed time
-      let statusText = `${job.status} - ${job.message || ''}`;
-      statusEl.textContent = statusText;
+      // Don't surface the raw technical status/message (e.g. "running - running
+      // model (tile 4/9)") — the progress bar and progress text convey state.
+      statusEl.textContent = '';
 
       if (job.status === 'completed') {
         clearInterval(pollTimer);
