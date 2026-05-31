@@ -37,7 +37,7 @@
       "data_dir": "backend/data",
       "uploads_dir": "backend/data/uploads",
       "outputs_dir": "backend/data/outputs",
-      "models_dir": "backend/data/models"
+      "models_dir": "backend/model"
     },
     "jobs": {
       "max_concurrent": 2,

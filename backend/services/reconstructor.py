@@ -119,7 +119,7 @@ class Reconstructor:
             logger.debug("Model already loaded, skipping")
             return
 
-        logger.warning(f"⚙️ LOADING MODEL: {self.model_path}")
+        logger.info(f"Loading model: {self.model_path}")
         if progress:
             progress(5, "loading model")
 
@@ -136,7 +136,7 @@ class Reconstructor:
 
                     # Handle different checkpoint formats
                     if isinstance(loaded, dict):
-                        logger.warning(f"📊 Checkpoint keys: {list(loaded.keys())}")
+                        logger.debug(f"Checkpoint keys: {list(loaded.keys())}")
 
                         # Try to extract the state dict from common checkpoint formats
                         state_dict = None
@@ -163,13 +163,13 @@ class Reconstructor:
                         # If we have a state dict, need to load it into a model architecture
                         if state_dict is not None:
                             from backend.models.rrdbnet_arch import RRDBNet
-                            logger.warning("🏗️ Creating RRDBNet model architecture")
+                            logger.info("Creating RRDBNet model architecture")
                             # Standard Real-ESRGAN configuration
                             self.model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64,
                                                num_block=23, num_grow_ch=32, scale=4)
-                            logger.warning(f"📥 Loading state dict into model from: {self.model_path}")
+                            logger.debug(f"Loading state dict into model from: {self.model_path}")
                             self.model.load_state_dict(state_dict, strict=True)
-                            logger.warning(f"✅ Model loaded successfully: {Path(self.model_path).name}")
+                            logger.info(f"Model loaded successfully: {Path(self.model_path).name}")
                     else:
                         # Loaded object is already a model
                         logger.info("Checkpoint is a complete model")
@@ -294,64 +294,71 @@ class Reconstructor:
 
         logger.info(f"Starting reconstruction: {input_path} -> {output_path}")
 
+        # Only hold the lock while switching/loading the shared model. We then
+        # capture a local reference to the loaded model and device so inference
+        # runs WITHOUT serializing every job, and stays valid even if another
+        # thread switches the model afterwards.
         with self._lock:
             # If a different model path is provided, reload the model
             if model_path and model_path != self.model_path:
-                logger.warning(f"🔄 MODEL SWITCH: {self.model_path} -> {model_path}")
+                logger.info(f"Model switch: {self.model_path} -> {model_path}")
                 self.model_path = model_path
                 self.model_loaded = False
                 self.model = None
             else:
-                logger.info(f"📦 Using model: {self.model_path}")
+                logger.info(f"Using model: {self.model_path}")
 
             # Load model lazily on first use
             self._lazy_load(progress)
+            model = self.model
+            device = self.device
 
-            # Read and convert input image to RGB
-            step(20, "reading input")
-            logger.debug(f"Reading input image: {input_path}")
-            img = Image.open(input_path).convert("RGB")
-            logger.debug(f"Input image size: {img.size}")
+        # Read and convert input image to RGB
+        step(20, "reading input")
+        logger.debug(f"Reading input image: {input_path}")
+        img = Image.open(input_path).convert("RGB")
+        logger.debug(f"Input image size: {img.size}")
 
-            # Preprocess image into tensor
-            step(35, "preprocessing")
-            logger.debug("Preprocessing image to tensor")
-            tensor = None
-            if TORCH_AVAILABLE:
-                import torchvision.transforms as T  # type: ignore
-                transform = T.Compose([T.ToTensor()])
-                tensor = transform(img).unsqueeze(0)
-                try:
-                    tensor = tensor.to(self.device)
-                    logger.debug(f"Tensor moved to {self.device}, shape: {tensor.shape}")
-                except Exception as e:
-                    logger.warning(f"Failed to move tensor to device: {e}")
-                    # If device transfer fails, keep on CPU
-                    pass
+        # Preprocess image into tensor
+        step(35, "preprocessing")
+        logger.debug("Preprocessing image to tensor")
+        tensor = None
+        T = None
+        if TORCH_AVAILABLE:
+            import torchvision.transforms as T  # type: ignore
+            transform = T.Compose([T.ToTensor()])
+            tensor = transform(img).unsqueeze(0)
+            try:
+                tensor = tensor.to(device)
+                logger.debug(f"Tensor moved to {device}, shape: {tensor.shape}")
+            except Exception as e:
+                logger.warning(f"Failed to move tensor to device: {e}")
+                # If device transfer fails, keep on CPU
+                pass
 
-            # Run model inference
-            step(70, "running model")
-            if TORCH_AVAILABLE and self.model is not None and tensor is not None:
-                logger.info("Running model inference")
-                with torch.no_grad():
-                    out = self.model(tensor)
-                logger.debug("Model inference complete")
-                # Normalize output into PIL Image
-                if isinstance(out, (list, tuple)):
-                    out = out[0]
-                if hasattr(out, "detach"):
-                    out = out.detach().cpu().squeeze(0)
-                # Clamp values to [0, 1] range to prevent artifacts
-                out = torch.clamp(out, 0, 1)
-                logger.debug(f"Output tensor range: [{out.min():.4f}, {out.max():.4f}]")
-                out_img = T.ToPILImage()(out)
-                logger.debug(f"Output image size: {out_img.size}")
-            else:
-                # Fallback: no model available, return input image (pass-through)
-                logger.info("Using pass-through mode (no model)")
-                out_img = img
+        # Run model inference
+        step(70, "running model")
+        if TORCH_AVAILABLE and model is not None and tensor is not None:
+            logger.info("Running model inference")
+            with torch.no_grad():
+                out = model(tensor)
+            logger.debug("Model inference complete")
+            # Normalize output into PIL Image
+            if isinstance(out, (list, tuple)):
+                out = out[0]
+            if hasattr(out, "detach"):
+                out = out.detach().cpu().squeeze(0)
+            # Clamp values to [0, 1] range to prevent artifacts
+            out = torch.clamp(out, 0, 1)
+            logger.debug(f"Output tensor range: [{out.min():.4f}, {out.max():.4f}]")
+            out_img = T.ToPILImage()(out)
+            logger.debug(f"Output image size: {out_img.size}")
+        else:
+            # Fallback: no model available, return input image (pass-through)
+            logger.info("Using pass-through mode (no model)")
+            out_img = img
 
-        # Save reconstructed image (outside lock - no shared state)
+        # Save reconstructed image
         step(90, "writing output")
         logger.debug(f"Saving output to: {output_path}")
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)

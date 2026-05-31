@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
@@ -54,10 +55,23 @@ class BackendApp:
         """
         logger.info("Initializing BackendApp")
         self.config = config
+
+        @asynccontextmanager
+        async def lifespan(app: FastAPI):
+            """Start/stop background services with the application lifecycle."""
+            logger.info("Application startup - starting background services")
+            self.cleanup.start()
+            try:
+                yield
+            finally:
+                logger.info("Application shutdown - stopping background services")
+                self.cleanup.stop()
+
         self.app = FastAPI(
             title=config.app_name,
             version=config.app_version,
             description=config.app_description,
+            lifespan=lifespan,
         )
         self._configure_cors()
 
@@ -86,10 +100,10 @@ class BackendApp:
             interval_hours=self.config.cleanup_interval_hours,
             max_age_hours=self.config.cleanup_max_age_hours,
             enabled=self.config.cleanup_enabled,
+            job_manager=self.jobs,
         )
 
         self._register_routes()
-        self._register_lifecycle_events()
 
         # Startup model availability warning
         if not self.reconstructor.model_available:
@@ -115,24 +129,6 @@ class BackendApp:
             allow_methods=self.config.cors_allow_methods,
             allow_headers=self.config.cors_allow_headers,
         )
-
-    def _register_lifecycle_events(self) -> None:
-        """Register application lifecycle events (startup and shutdown).
-
-        Sets up event handlers to start the cleanup service when the application
-        starts and stop it when the application shuts down.
-        """
-        @self.app.on_event("startup")
-        async def startup_event():
-            """Start background services on application startup."""
-            logger.info("Application startup - starting background services")
-            self.cleanup.start()
-
-        @self.app.on_event("shutdown")
-        async def shutdown_event():
-            """Stop background services on application shutdown."""
-            logger.info("Application shutdown - stopping background services")
-            self.cleanup.stop()
 
     def _register_routes(self) -> None:
         """Register all API endpoints with the FastAPI application.
@@ -283,8 +279,9 @@ class BackendApp:
                 return JSONResponse(status_code=409, content={"detail": "Job not completed"})
             out_path = meta.get("output_path")
             if not out_path or not Path(out_path).exists():
-                logger.error(f"API: Result file missing for job {job_id}: {out_path}")
-                raise HTTPException(status_code=500, detail="Result missing")
+                # Result was cleaned up (or never written) — it's gone, not a server error.
+                logger.warning(f"API: Result file no longer available for job {job_id}: {out_path}")
+                raise HTTPException(status_code=410, detail="Result no longer available")
             filename = Path(out_path).name
             logger.info(f"API: Serving result for job {job_id}: {filename}")
             return FileResponse(out_path, filename=filename, media_type="image/png")

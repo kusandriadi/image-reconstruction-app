@@ -114,24 +114,31 @@ class JobManager:
     def _save_job(self, job_id: str):
         """Save a single job to disk.
 
+        Snapshots the job metadata under the lock, then writes to disk outside the
+        lock so file I/O does not block other threads.
+
         Args:
             job_id: Job identifier to save.
         """
         try:
-            job_file = Path(self.jobs_dir) / f"{job_id}.json"
             with self._lock:
                 job_data = self._jobs.get(job_id)
-                if job_data:
-                    with open(job_file, "w") as f:
-                        json.dump(job_data, f, indent=2)
+                snapshot = dict(job_data) if job_data else None
+            if snapshot is None:
+                return
+            job_file = Path(self.jobs_dir) / f"{job_id}.json"
+            with open(job_file, "w") as f:
+                json.dump(snapshot, f, indent=2)
         except Exception as e:
             logger.error(f"Failed to save job {job_id} to disk: {e}")
 
-    def _update(self, job_id: str, **kwargs):
+    def _update(self, job_id: str, *, persist: bool = True, **kwargs):
         """Thread-safe update of job metadata.
 
         Args:
             job_id: Unique job identifier.
+            persist: Whether to write the job to disk after updating. Pass False for
+                high-frequency progress ticks to avoid a disk write on every percent.
             **kwargs: Job fields to update (status, progress, message, error, etc.).
 
         Note:
@@ -139,8 +146,48 @@ class JobManager:
         """
         with self._lock:
             self._jobs[job_id].update(kwargs)
-        # Persist to disk after every update
-        self._save_job(job_id)
+        # Persist to disk only when requested (status transitions), not every tick
+        if persist:
+            self._save_job(job_id)
+
+    def prune_old(self, max_age_seconds: float) -> int:
+        """Remove finished jobs older than max_age_seconds from memory and disk.
+
+        Keeps the in-memory job table and persisted job files bounded over long
+        uptime. Only jobs in a terminal state (completed/failed/cancelled) are
+        removed; active jobs are always retained regardless of age.
+
+        Args:
+            max_age_seconds: Age threshold based on the job file's mtime.
+
+        Returns:
+            Number of jobs pruned.
+        """
+        cutoff = time.time() - max_age_seconds
+        removed = 0
+        jobs_path = Path(self.jobs_dir)
+        with self._lock:
+            for job_file in list(jobs_path.glob("*.json")):
+                try:
+                    if job_file.stat().st_mtime >= cutoff:
+                        continue
+                except OSError:
+                    continue
+                job_id = job_file.stem
+                job = self._jobs.get(job_id)
+                if job and job.get("status") not in ("completed", "failed", "cancelled"):
+                    # Never prune an active job
+                    continue
+                try:
+                    job_file.unlink()
+                except OSError as e:
+                    logger.error(f"Failed to delete job file {job_file}: {e}")
+                    continue
+                self._jobs.pop(job_id, None)
+                removed += 1
+        if removed:
+            logger.info(f"Pruned {removed} old jobs from memory and disk")
+        return removed
 
     def is_full(self) -> bool:
         """Check if the maximum number of concurrent jobs is reached.
@@ -283,8 +330,8 @@ class JobManager:
         logger.info(f"Worker starting for job {job_id}")
 
         def progress(pct: int, msg: str):
-            """Progress callback to update job metadata."""
-            self._update(job_id, progress=pct, message=msg)
+            """Progress callback to update job metadata (not persisted per tick)."""
+            self._update(job_id, progress=pct, message=msg, persist=False)
             logger.debug(f"Job {job_id}: {pct}% - {msg}")
 
         def cancelled() -> bool:
@@ -298,10 +345,10 @@ class JobManager:
         job = self.get(job_id)
         try:
             model_filename = job.get("model_filename", self.default_model_filename)
-            logger.warning(f"Job {job_id}: Using model '{model_filename}'")
+            logger.info(f"Job {job_id}: Using model '{model_filename}'")
             # Construct model path from filename using configured model directory
             model_path = Path(self.model_dir) / model_filename
-            logger.warning(f"Model path: {model_path}")
+            logger.debug(f"Model path: {model_path}")
             # Run the reconstruction process
             self.reconstructor.reconstruct(
                 job["input_path"],

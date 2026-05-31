@@ -114,16 +114,19 @@ class UploadValidator:
             raise HTTPException(status_code=413, detail="File too large")
 
     def _check_type(self, content_type: str | None):
-        """Validate MIME type is in allowed list.
+        """Validate MIME type is present and in the allowed list.
+
+        A missing Content-Type is rejected rather than silently accepted, so the
+        MIME check cannot be bypassed simply by omitting the header.
 
         Args:
             content_type: MIME type from upload headers.
 
         Raises:
-            HTTPException 415: If MIME type is not in allowed_mime set.
+            HTTPException 415: If MIME type is missing or not in allowed_mime set.
         """
-        if content_type and content_type not in self.allowed_mime:
-            raise HTTPException(status_code=415, detail=f"Unsupported media type: {content_type}")
+        if not content_type or content_type not in self.allowed_mime:
+            raise HTTPException(status_code=415, detail=f"Unsupported media type: {content_type or 'missing'}")
 
     def _check_image_decodable(self, content: bytes):
         """Verify that the uploaded file is a valid, decodable image.

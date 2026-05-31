@@ -224,115 +224,35 @@ echo ""
 ################################################################################
 # Step 9: Configure Nginx with SSL
 ################################################################################
-print_info "[9/11] Configuring Nginx with SSL..."
+print_info "[9/11] Configuring Nginx with SSL for $DOMAIN..."
 
-# Create docker directory if not exists
-mkdir -p docker
+# Use the committed docker/nginx.conf as the source of truth and only template
+# the domain into it in place. We intentionally do NOT overwrite the whole file,
+# so any committed hardening (security headers, rate limiting, etc.) is preserved
+# across deploys instead of being discarded.
+if [ ! -f "docker/nginx.conf" ]; then
+    print_error "docker/nginx.conf not found in repository"
+    exit 1
+fi
 
-# Create nginx configuration
-cat > docker/nginx.conf << EOF
-server {
-    listen 80;
-    server_name $DOMAIN www.$DOMAIN;
+if [ "$DOMAIN" != "pixup.id" ]; then
+    sed -i "s/pixup\.id/$DOMAIN/g" docker/nginx.conf
+fi
 
-    # Redirect HTTP to HTTPS
-    return 301 https://\$server_name\$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name $DOMAIN www.$DOMAIN;
-
-    # SSL Certificates
-    ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
-
-    # SSL Configuration
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-    ssl_prefer_server_ciphers on;
-
-    # Security headers
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-
-    # Frontend
-    location / {
-        root /usr/share/nginx/html;
-        index index.html;
-        try_files \$uri \$uri/ /index.html;
-    }
-
-    # Backend API
-    location /api/ {
-        proxy_pass http://backend:8000/api/;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-
-        # Timeouts for long processing
-        proxy_connect_timeout 300s;
-        proxy_send_timeout 300s;
-        proxy_read_timeout 300s;
-
-        # Max upload size
-        client_max_body_size 50M;
-    }
-}
-EOF
-
-print_success "Nginx configuration created"
+print_success "Nginx configuration templated for $DOMAIN"
 echo ""
 
 ################################################################################
 # Step 10: Update docker-compose.yml and start services
 ################################################################################
-print_info "[10/11] Configuring and starting Docker services..."
+print_info "[10/11] Building and starting Docker services..."
 
-# Backup original docker-compose.yml if exists
-if [ -f "docker-compose.yml" ]; then
-    cp docker-compose.yml docker-compose.yml.backup
-    print_info "Backed up existing docker-compose.yml"
+# Use the committed docker-compose.yml as-is rather than regenerating it, so
+# fixes committed to the repo (e.g. the healthcheck) are not silently reverted.
+if [ ! -f "docker-compose.yml" ]; then
+    print_error "docker-compose.yml not found in repository"
+    exit 1
 fi
-
-# Create production docker-compose.yml
-cat > docker-compose.yml << 'EOF'
-services:
-  backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./backend/data:/app/backend/data
-      - ./backend/model:/app/backend/model:ro
-      - ./config.json:/app/config.json:ro
-    environment:
-      - PYTHONUNBUFFERED=1
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  frontend:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./frontend:/usr/share/nginx/html:ro
-      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-    depends_on:
-      - backend
-    restart: unless-stopped
-EOF
 
 # Build and start services
 print_info "Cleaning Docker cache..."

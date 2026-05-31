@@ -37,7 +37,8 @@ class CleanupService:
         jobs_dir: str = None,
         interval_hours: float = 1.0,
         max_age_hours: float = 1.0,
-        enabled: bool = True
+        enabled: bool = True,
+        job_manager=None
     ):
         """Initialize the cleanup service.
 
@@ -48,6 +49,9 @@ class CleanupService:
             interval_hours: Interval between cleanup runs in hours (default: 1.0).
             max_age_hours: Maximum file age in hours before deletion (default: 1.0).
             enabled: Whether to enable automatic cleanup (default: True).
+            job_manager: Optional JobManager. When provided, job metadata is pruned
+                via job_manager.prune_old() so its in-memory table stays consistent
+                with disk, instead of deleting job files directly.
         """
         self.uploads_dir = Path(uploads_dir)
         self.outputs_dir = Path(outputs_dir)
@@ -55,6 +59,7 @@ class CleanupService:
         self.interval_hours = interval_hours
         self.max_age_hours = max_age_hours
         self.enabled = enabled
+        self.job_manager = job_manager
 
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -110,7 +115,15 @@ class CleanupService:
         max_age_seconds = self.max_age_hours * 3600
         current_time = time.time()
 
-        for directory in [self.uploads_dir, self.outputs_dir, self.jobs_dir]:
+        # Prune job metadata via the JobManager so its in-memory table stays in
+        # sync; fall back to direct file deletion only if no manager is wired in.
+        directories = [self.uploads_dir, self.outputs_dir]
+        if self.job_manager is not None:
+            self.job_manager.prune_old(max_age_seconds)
+        else:
+            directories.append(self.jobs_dir)
+
+        for directory in directories:
             if not directory.exists():
                 logger.warning(f"Directory does not exist: {directory}")
                 continue
