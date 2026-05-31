@@ -14,7 +14,7 @@
       "device": "auto"
     },
     "upload": {
-      "max_size_mb": 10,
+      "max_size_mb": 1.5,
       "max_pixels": 40000000,
       "allowed_mime_types": [
         "image/png",
