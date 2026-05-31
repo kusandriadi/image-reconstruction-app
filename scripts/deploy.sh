@@ -35,6 +35,20 @@ print_warning() {
     echo -e "${YELLOW}⚠ $1${NC}"
 }
 
+# Detect available Docker Compose command. The v2 plugin ("docker compose") is
+# preferred; fall back to the legacy v1 standalone binary ("docker-compose").
+# Sets the global COMPOSE variable (empty if neither is available yet).
+COMPOSE=""
+detect_compose() {
+    if docker compose version &> /dev/null; then
+        COMPOSE="docker compose"
+    elif command -v docker-compose &> /dev/null; then
+        COMPOSE="docker-compose"
+    else
+        COMPOSE=""
+    fi
+}
+
 # Check if running as root
 if [ "$EUID" -eq 0 ]; then
     print_error "Please do not run as root. Use a regular user with sudo privileges."
@@ -72,12 +86,13 @@ echo ""
 ################################################################################
 print_info "Checking if application is already running..."
 
-if command -v docker-compose &> /dev/null && [ -f "docker-compose.yml" ]; then
-    if docker-compose ps 2>/dev/null | grep -q "Up"; then
+detect_compose
+if [ -n "$COMPOSE" ] && [ -f "docker-compose.yml" ]; then
+    if $COMPOSE ps 2>/dev/null | grep -q "Up"; then
         print_error "Application is already running!"
         echo ""
         print_info "Current status:"
-        docker-compose ps
+        $COMPOSE ps
         echo ""
         print_warning "Please stop the application first using: scripts/stop.sh"
         print_warning "Or use restart script to update: scripts/restart.sh"
@@ -114,13 +129,23 @@ echo ""
 ################################################################################
 # Step 3: Install Docker Compose
 ################################################################################
-print_info "[3/11] Installing Docker Compose..."
-if ! command -v docker-compose &> /dev/null; then
+print_info "[3/11] Setting up Docker Compose..."
+detect_compose
+if [ "$COMPOSE" = "docker compose" ]; then
+    print_success "Using Docker Compose v2 plugin ($(docker compose version --short 2>/dev/null))"
+elif [ "$COMPOSE" = "docker-compose" ]; then
+    print_success "Using Docker Compose v1 ($(docker-compose --version))"
+else
+    print_info "Docker Compose not found, installing v1 standalone binary..."
     sudo curl -sL "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
     sudo chmod +x /usr/local/bin/docker-compose
-    print_success "Docker Compose installed"
-else
-    print_success "Docker Compose already installed ($(docker-compose --version))"
+    detect_compose
+    if [ -n "$COMPOSE" ]; then
+        print_success "Docker Compose installed ($COMPOSE)"
+    else
+        print_error "Failed to set up Docker Compose"
+        exit 1
+    fi
 fi
 echo ""
 
@@ -199,7 +224,7 @@ echo ""
 print_info "[8/11] Setting up SSL certificate..."
 
 # Stop any running containers to free up port 80
-docker-compose down 2>/dev/null || true
+$COMPOSE down 2>/dev/null || true
 
 # Install Certbot
 if ! command -v certbot &> /dev/null; then
@@ -265,10 +290,10 @@ print_info "Cleaning Docker cache..."
 docker builder prune -f > /dev/null 2>&1
 
 print_info "Building Docker images (this may take several minutes)..."
-docker-compose build --no-cache --quiet
+$COMPOSE build --no-cache --quiet
 
 print_info "Starting services..."
-docker-compose up -d
+$COMPOSE up -d
 
 print_success "Services started"
 echo ""
@@ -286,7 +311,7 @@ sudo mkdir -p /etc/letsencrypt/renewal-hooks/post
 sudo tee /etc/letsencrypt/renewal-hooks/post/restart-nginx.sh > /dev/null << EOF
 #!/bin/bash
 cd $CURRENT_DIR
-docker-compose restart frontend
+$COMPOSE restart frontend
 EOF
 
 sudo chmod +x /etc/letsencrypt/renewal-hooks/post/restart-nginx.sh
@@ -301,11 +326,11 @@ print_info "Running final checks..."
 sleep 10
 
 # Check if containers are running
-if docker-compose ps | grep -q "Up"; then
+if $COMPOSE ps | grep -q "Up"; then
     print_success "Containers are running"
 else
     print_error "Some containers failed to start"
-    print_info "Check logs with: docker-compose logs"
+    print_info "Check logs with: $COMPOSE logs"
     exit 1
 fi
 
@@ -324,7 +349,7 @@ while [ $RETRY -lt $MAX_RETRIES ]; do
             sleep 5
         else
             print_warning "Backend health check timed out"
-            print_info "Check logs with: docker-compose logs backend"
+            print_info "Check logs with: $COMPOSE logs backend"
         fi
     fi
 done
@@ -338,7 +363,6 @@ echo "Your application is now live at:"
 echo ""
 echo -e "  🌐 Frontend:    \033]8;;https://$DOMAIN\033\\https://$DOMAIN\033]8;;\033\\"
 echo -e "  🔧 Backend API: \033]8;;https://$DOMAIN/api/\033\\https://$DOMAIN/api/\033]8;;\033\\"
-echo -e "  📚 API Docs:    \033]8;;https://$DOMAIN/docs\033\\https://$DOMAIN/docs\033]8;;\033\\"
 echo -e "  ❤️  Health:      \033]8;;https://$DOMAIN/api/health\033\\https://$DOMAIN/api/health\033]8;;\033\\"
 echo ""
 echo -e "${GREEN}(Click links above to open in browser)${NC}"
@@ -346,11 +370,11 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "Useful Commands:"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  View logs:          docker-compose logs -f"
-echo "  Restart services:   docker-compose restart"
-echo "  Stop services:      docker-compose down"
-echo "  Update app:         git pull && docker-compose up -d --build"
-echo "  Check status:       docker-compose ps"
+echo "  View logs:          $COMPOSE logs -f"
+echo "  Restart services:   $COMPOSE restart"
+echo "  Stop services:      $COMPOSE down"
+echo "  Update app:         git pull && $COMPOSE up -d --build"
+echo "  Check status:       $COMPOSE ps"
 echo "  Test SSL renewal:   sudo certbot renew --dry-run"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -360,6 +384,6 @@ echo ""
 
 if [ "$MODEL_FOUND" = false ]; then
     print_warning "REMINDER: Model files were not found during deployment"
-    print_warning "Upload them to backend/model/ and restart: docker-compose restart backend"
+    print_warning "Upload them to backend/model/ and restart: $COMPOSE restart backend"
     echo ""
 fi
