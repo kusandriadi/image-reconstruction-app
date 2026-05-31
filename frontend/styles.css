@@ -359,10 +359,11 @@ h1 {
   --pos: 50%;
 }
 
-.compare-img { display: block; }
-.compare-before { width: 100%; height: auto; }
+/* Base layer (full): the enhanced result. Defines the box size. */
+.compare-base { display: block; width: 100%; height: auto; }
 
-.compare-after-wrap {
+/* Reveal layer: the original, clipped from the left up to the divider. */
+.compare-reveal {
   position: absolute;
   top: 0;
   left: 0;
@@ -371,7 +372,7 @@ h1 {
   overflow: hidden;
   will-change: width;
 }
-.compare-after { position: absolute; top: 0; left: 0; height: 100%; width: auto; max-width: none; }
+.compare-reveal-img { position: absolute; top: 0; left: 0; height: 100%; width: auto; max-width: none; }
 
 .compare-handle {
   position: absolute;
@@ -419,8 +420,8 @@ h1 {
 .compare-tag-before { left: 10px; }
 .compare-tag-after { right: 10px; }
 
-/* Single-image fallback (no "before" available) */
-.comparison.no-before .compare-after-wrap { width: 100% !important; }
+/* Single-image fallback (no "before" available): show only the result */
+.comparison.no-before .compare-reveal,
 .comparison.no-before .compare-handle,
 .comparison.no-before .compare-tag { display: none; }
 

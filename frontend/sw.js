@@ -1,5 +1,5 @@
 // PixUp service worker — installability + offline UI, without serving stale code.
-const CACHE_VERSION = '95b8c7c7';
+const CACHE_VERSION = '3a265ebe';
 const CACHE = `pixup-${CACHE_VERSION}`;
 
 const APP_SHELL = [

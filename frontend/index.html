@@ -108,9 +108,11 @@
 
       <!-- Interactive before/after comparison -->
       <div id="comparison" class="comparison hidden">
-        <img id="beforeImg" class="compare-img compare-before" alt="Original" />
-        <div class="compare-after-wrap">
-          <img id="preview" class="compare-img compare-after" alt="Output preview" />
+        <!-- Base layer = enhanced result (shown to the RIGHT of the divider) -->
+        <img id="preview" class="compare-base" alt="Output preview" />
+        <!-- Reveal layer = original (shown to the LEFT of the divider) -->
+        <div class="compare-reveal">
+          <img id="beforeImg" class="compare-reveal-img" alt="Original" />
         </div>
         <span class="compare-tag compare-tag-before">Before</span>
         <span class="compare-tag compare-tag-after">After</span>
