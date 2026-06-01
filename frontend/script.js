@@ -81,12 +81,6 @@ function applyUIConfig() {
 
   // Update labels (preserve SVG icons inside buttons)
   if (appConfig.ui?.labels) {
-    const inputLabel = document.querySelector('label[class="label"]:first-of-type');
-    if (inputLabel) inputLabel.textContent = appConfig.ui.labels.input;
-
-    const outputLabel = document.querySelector('label[class="label"]:last-of-type');
-    if (outputLabel) outputLabel.textContent = appConfig.ui.labels.output;
-
     // Update button text without removing SVG icons
     const setBtnText = (btn, text) => {
       if (!btn) return;
@@ -430,8 +424,10 @@ function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
   if (!appConfig) return;
 
-  // Use polling interval from config
+  // Use polling interval + retry cap from config
   const pollingInterval = appConfig.polling.interval_ms;
+  const maxRetries = appConfig.polling.retry_attempts || 3;
+  let pollErrors = 0;
 
   pollTimer = setInterval(async () => {
     if (!currentJobId) return;
@@ -444,6 +440,7 @@ function startPolling() {
         throw new Error('Status check failed');
       }
       const job = await res.json();
+      pollErrors = 0; // reset retry counter on a successful poll
       const pct = Math.max(0, Math.min(100, job.progress || 0));
       updateProgress(pct);
 
@@ -498,9 +495,16 @@ function startPolling() {
         statusEl.textContent = 'Job not found (server may have restarted)';
         if (progressText) progressText.textContent = 'Error';
       } else {
-        // show but keep trying for other errors
+        // Retry up to retry_attempts consecutive failures, then give up
+        pollErrors++;
         const msg = formatMessage(appConfig.ui.messages.polling_error, { error: e.message });
         statusEl.textContent = msg;
+        if (pollErrors >= maxRetries) {
+          clearInterval(pollTimer);
+          cancelBtn.disabled = true;
+          resetBtn.classList.remove('hidden');
+          if (progressText) progressText.textContent = 'Error';
+        }
       }
     }
   }, pollingInterval);

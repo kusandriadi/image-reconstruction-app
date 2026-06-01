@@ -32,7 +32,6 @@ class Config:
 
     Attributes:
         base_dir: Base directory of the backend application (parent of this file).
-        data_dir: Root directory for all data storage.
         uploads_dir: Directory where uploaded images are temporarily stored.
         outputs_dir: Directory where reconstructed images are saved.
         models_dir: Directory where ML models are stored.
@@ -54,7 +53,6 @@ class Config:
         Path('/path/to/backend/data/uploads')
     """
     base_dir: Path
-    data_dir: Path
     uploads_dir: Path
     outputs_dir: Path
     models_dir: Path
@@ -154,7 +152,6 @@ class Config:
         docs_enabled = bool(loader.get("app.docs_enabled", False))
 
         # Read directory paths from config
-        data_dir_rel = loader.get("backend.directories.data_dir", "backend/data")
         uploads_dir_rel = loader.get("backend.directories.uploads_dir", "backend/data/uploads")
         outputs_dir_rel = loader.get("backend.directories.outputs_dir", "backend/data/outputs")
         models_dir_rel = loader.get("backend.directories.models_dir", "backend/data/models")
@@ -162,7 +159,6 @@ class Config:
 
         # Convert to absolute paths
         project_root = base_dir.parent
-        data_dir = project_root / data_dir_rel
         uploads_dir = project_root / uploads_dir_rel
         outputs_dir = project_root / outputs_dir_rel
         models_dir = project_root / models_dir_rel
@@ -220,7 +216,6 @@ class Config:
 
         return Config(
             base_dir=base_dir,
-            data_dir=data_dir,
             uploads_dir=uploads_dir,
             outputs_dir=outputs_dir,
             models_dir=models_dir,

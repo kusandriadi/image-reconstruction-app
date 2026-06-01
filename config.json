@@ -43,7 +43,6 @@
       "allow_headers": ["*"]
     },
     "directories": {
-      "data_dir": "backend/data",
       "uploads_dir": "backend/data/uploads",
       "outputs_dir": "backend/data/outputs",
       "models_dir": "backend/model"
@@ -77,8 +76,6 @@
         { "value": "REAL-ESRGAN.pth", "label": "REAL-ESRGAN" }
       ],
       "labels": {
-        "input": "Input Image",
-        "output": "Output",
         "ok_button": "Enhance",
         "cancel_button": "Cancel",
         "download_button": "Download result"
