@@ -92,14 +92,13 @@ print_info "Checking if application is already running..."
 
 detect_compose
 if [ -n "$COMPOSE" ] && [ -f "docker-compose.yml" ]; then
-    if $COMPOSE ps 2>/dev/null | grep -q "Up"; then
-        print_error "Application is already running!"
+    if $COMPOSE ps 2>/dev/null | grep -qE "Up|running"; then
+        print_error "The application (frontend and/or backend) is already running:"
         echo ""
-        print_info "Current status:"
         $COMPOSE ps
         echo ""
-        print_warning "Please stop the application first using: scripts/stop.sh"
-        print_warning "Or use restart script to update: scripts/restart.sh"
+        print_warning "Stop it first, then re-run deploy:"
+        print_warning "   scripts/stop.sh"
         exit 1
     fi
 fi

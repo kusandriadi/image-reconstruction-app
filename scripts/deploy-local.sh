@@ -70,6 +70,19 @@ fi
 echo ""
 
 ################################################################################
+# Refuse to deploy if the app is already running
+################################################################################
+if $COMPOSE -f "$COMPOSE_FILE" ps 2>/dev/null | grep -qE "Up|running"; then
+    print_error "The application (frontend and/or backend) is already running:"
+    echo ""
+    $COMPOSE -f "$COMPOSE_FILE" ps
+    echo ""
+    print_warning "Stop it first, then re-run this script:"
+    print_warning "   scripts/stop.sh"
+    exit 1
+fi
+
+################################################################################
 # Model files
 ################################################################################
 print_info "Checking model files..."
