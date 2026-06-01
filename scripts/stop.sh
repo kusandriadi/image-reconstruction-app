@@ -1,8 +1,10 @@
 #!/bin/bash
 
 ################################################################################
-# Stop Script - Stop all running Docker services
-# Usage: ./stop.sh
+# Stop Script - Stop the application services
+# Usage: ./stop.sh [all]
+#   ./stop.sh        stop the app containers only (no sudo)
+#   ./stop.sh all    also stop the systemd log collector (needs sudo)
 ################################################################################
 
 set -e  # Exit on error
@@ -33,6 +35,10 @@ print_warning() {
 # Run from the repo root regardless of where this script is invoked from
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/.."
+
+# "all" => also stop the log collector (otherwise leave it running, no sudo)
+STOP_ALL=false
+[ "${1:-}" = "all" ] && STOP_ALL=true
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -92,14 +98,20 @@ $COMPOSE down
 print_success "All services stopped successfully"
 echo ""
 
-# Stop the local (nohup) log collector if running — it's our own process, no sudo.
-# The production collector runs as a systemd service that auto-reconnects when the
-# app restarts, so we leave it alone here (no sudo prompt). To stop it manually:
-#   sudo systemctl stop image-reconstruction-logs
-if [ -f logs/.collector.pid ]; then
-    kill "$(cat logs/.collector.pid 2>/dev/null)" 2>/dev/null || true
-    rm -f logs/.collector.pid
-    print_info "Log collector (background) stopped"
+# Log collector: only stop it when explicitly asked with "all" (the systemd stop
+# needs sudo). By default leave it running — it auto-reconnects when the app restarts.
+if [ "$STOP_ALL" = true ]; then
+    if systemctl list-unit-files 2>/dev/null | grep -q "image-reconstruction-logs.service"; then
+        sudo systemctl stop image-reconstruction-logs.service 2>/dev/null || true
+        print_info "Log collector (systemd) stopped"
+    fi
+    if [ -f logs/.collector.pid ]; then
+        kill "$(cat logs/.collector.pid 2>/dev/null)" 2>/dev/null || true
+        rm -f logs/.collector.pid
+        print_info "Log collector (background) stopped"
+    fi
+else
+    print_info "Log collector left running (use 'scripts/stop.sh all' to stop it too)"
 fi
 echo ""
 
