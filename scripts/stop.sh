@@ -92,11 +92,10 @@ $COMPOSE down
 print_success "All services stopped successfully"
 echo ""
 
-# Stop the combined log collector (systemd service and/or background nohup)
-if systemctl list-unit-files 2>/dev/null | grep -q "image-reconstruction-logs.service"; then
-    sudo systemctl stop image-reconstruction-logs.service 2>/dev/null || true
-    print_info "Log collector (systemd) stopped"
-fi
+# Stop the local (nohup) log collector if running — it's our own process, no sudo.
+# The production collector runs as a systemd service that auto-reconnects when the
+# app restarts, so we leave it alone here (no sudo prompt). To stop it manually:
+#   sudo systemctl stop image-reconstruction-logs
 if [ -f logs/.collector.pid ]; then
     kill "$(cat logs/.collector.pid 2>/dev/null)" 2>/dev/null || true
     rm -f logs/.collector.pid
