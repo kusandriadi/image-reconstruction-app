@@ -4,7 +4,11 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      # Bind to localhost only. The backend is reached publicly via the Nginx
+      # HTTPS proxy (/api); this blocks direct external access to :8000 (Docker
+      # would otherwise publish 0.0.0.0:8000 and bypass ufw). Host-side health
+      # checks (curl localhost:8000) still work.
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./backend/data:/app/backend/data
       - ./backend/model:/app/backend/model:ro

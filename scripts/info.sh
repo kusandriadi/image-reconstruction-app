@@ -199,22 +199,28 @@ echo ""
 print_header "🌐 NETWORK"
 echo ""
 
-if [ "$FRONTEND_RUNNING" = true ]; then
-    FRONTEND_PORT=$($COMPOSE port frontend 80 2>/dev/null | cut -d: -f2)
-    if [ -n "$FRONTEND_PORT" ]; then
-        echo "Frontend: http://localhost:$FRONTEND_PORT"
-    fi
-
-    FRONTEND_SSL_PORT=$($COMPOSE port frontend 443 2>/dev/null | cut -d: -f2)
-    if [ -n "$FRONTEND_SSL_PORT" ]; then
-        echo "HTTPS:    https://localhost:$FRONTEND_SSL_PORT"
-    fi
+# Detect the public domain from the nginx config (production); else fall back
+# to localhost (local/dev).
+DOMAIN=""
+if [ -f "docker/nginx.conf" ]; then
+    DOMAIN=$(grep -m1 "server_name" docker/nginx.conf | awk '{print $2}' | tr -d ';' | grep -v '^_$')
 fi
 
-if [ "$BACKEND_RUNNING" = true ]; then
-    BACKEND_PORT=$($COMPOSE port backend 8000 2>/dev/null | cut -d: -f2)
-    if [ -n "$BACKEND_PORT" ]; then
-        echo "Backend:  http://localhost:$BACKEND_PORT"
+if [ -n "$DOMAIN" ] && [ "$DOMAIN" != "localhost" ]; then
+    # Production: served over HTTPS through the domain
+    echo "Website:  https://$DOMAIN"
+    echo "API:      https://$DOMAIN/api/"
+    echo "Health:   https://$DOMAIN/api/health"
+    echo "(backend :8000 is bound to localhost only — public access goes via Nginx)"
+else
+    # Local / dev
+    if [ "$FRONTEND_RUNNING" = true ]; then
+        FRONTEND_PORT=$($COMPOSE port frontend 80 2>/dev/null | cut -d: -f2)
+        [ -n "$FRONTEND_PORT" ] && echo "Frontend: http://localhost:$FRONTEND_PORT"
+    fi
+    if [ "$BACKEND_RUNNING" = true ]; then
+        BACKEND_PORT=$($COMPOSE port backend 8000 2>/dev/null | cut -d: -f2)
+        [ -n "$BACKEND_PORT" ] && echo "Backend:  http://localhost:$BACKEND_PORT"
     fi
 fi
 
